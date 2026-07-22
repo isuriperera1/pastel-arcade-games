@@ -59,17 +59,18 @@ const GAMES_REGISTRY = [
     `,
   },
   {
-    id: "memory-match",
-    name: "Memory Match",
-    description: "Flip cards and find matching pastel pairs.",
-    path: "games/memory-match/index.html",
+    id: "flow",
+    name: "Flow",
+    description: "Rotate pipes to connect the light to its destination.",
+    path: "games/flow/index.html",
     iconSvg: `
       <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
         <rect width="64" height="64" rx="14" fill="#B9A9D6"/>
-        <rect x="10" y="12" width="20" height="28" rx="6" fill="#F5EFE3" transform="rotate(-8 20 26)"/>
-        <rect x="34" y="14" width="20" height="28" rx="6" fill="#7FC7C4" transform="rotate(10 44 28)"/>
-        <circle cx="20" cy="26" r="5" fill="#E8B4B8"/>
-        <circle cx="44" cy="28" r="5" fill="#3A3159"/>
+        <path d="M14 42 H30 Q36 42 36 36 V18" fill="none" stroke="#7FC7C4" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="46" cy="42" r="12" fill="#E8B4B8" opacity="0.95"/>
+        <circle cx="46" cy="42" r="7" fill="#F5EFE3"/>
+        <circle cx="46" cy="42" r="4.5" fill="#B9A9D6"/>
+        <path d="M36 42 H34" fill="none" stroke="#7FC7C4" stroke-width="8" stroke-linecap="round"/>
       </svg>
     `,
   },

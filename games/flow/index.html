@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Flow · Arcade Games</title>
+    <link rel="stylesheet" href="../../styles/theme.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div id="site-nav" data-base="../.."></div>
+
+      <main class="page-main page-main--game">
+        <header class="game-header">
+          <h1>Flow</h1>
+          <p class="lede">Rotate pipes to connect the light to its destination.</p>
+        </header>
+
+        <!-- Level select (entry) -->
+        <section class="game-shell" id="select-screen" aria-label="Level select">
+          <h2 class="flow-section-title">Choose a level</h2>
+          <div class="level-grid" id="level-grid" role="list"></div>
+        </section>
+
+        <!-- Puzzle play -->
+        <section class="game-shell is-hidden" id="play-screen" aria-label="Puzzle">
+          <div class="hud">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat__label">Level</span>
+                <span class="stat__value" id="hud-level">1</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">Moves</span>
+                <span class="stat__value" id="hud-moves">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">Par</span>
+                <span class="stat__value" id="hud-par">—</span>
+              </div>
+            </div>
+            <div class="btn-group hud-actions">
+              <button type="button" class="btn btn--ghost btn--sm" id="btn-levels">
+                Levels
+              </button>
+              <button type="button" class="btn btn--primary btn--sm" id="btn-replay">
+                Replay
+              </button>
+            </div>
+          </div>
+
+          <p class="muted text-center flow-level-name" id="level-name"></p>
+
+          <div class="board-wrap flow-board-wrap">
+            <div
+              class="flow-grid"
+              id="flow-grid"
+              role="grid"
+              aria-label="Pipe puzzle board"
+            ></div>
+
+            <div class="modal-backdrop" id="complete-modal" aria-hidden="true">
+              <div
+                class="modal-card"
+                role="dialog"
+                aria-labelledby="complete-title"
+                aria-describedby="complete-msg"
+              >
+                <h2 id="complete-title">Level Complete</h2>
+                <div class="star-row" id="complete-stars" aria-hidden="true">
+                  <span class="star" data-i="1">★</span>
+                  <span class="star" data-i="2">★</span>
+                  <span class="star" data-i="3">★</span>
+                </div>
+                <p id="complete-msg">Nice routing!</p>
+                <div class="btn-group">
+                  <button type="button" class="btn btn--primary" id="btn-next">
+                    Next Level
+                  </button>
+                  <button type="button" class="btn btn--ghost" id="btn-replay-modal">
+                    Replay
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="muted text-center hint">
+            Tap a pipe to rotate it 90°. Connect source to target.
+          </p>
+        </section>
+      </main>
+    </div>
+
+    <script src="../../js/shell.js"></script>
+    <script src="levels.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>
