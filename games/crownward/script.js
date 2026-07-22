@@ -19,6 +19,7 @@
  *    rim outline + light-side highlight to separate them from the backdrop.
  *  - Jump feel: inset hitbox, coyote time, and jump buffer (Chrome Dino–inspired).
  */
+
 (function () {
   "use strict";
 
