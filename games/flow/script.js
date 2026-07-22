@@ -1,18 +1,19 @@
 /**
- * Flow — rotate pipes to connect source light to target.
- * Levels 1–3 playable; 4–10 locked (Part 2).
+ * Flow — rotate pipes to connect source light(s) to matching target(s).
+ * Levels 1–7 playable; 8–10 locked (Part 3).
+ *
+ * Oneway tiles: two ports like straight (opposite) or curve (adjacent).
+ * flowDirection "A-to-B" means flow may enter from A and leave via B only.
+ * Base at rotation 0 is always N-to-S (straight-like) or N-to-E (curve-like);
+ * rotating the tile rotates connections and flowDirection together.
  */
 (function () {
   const TOTAL_LEVELS = 10;
-  const UNLOCKED_THROUGH = 3;
+  const UNLOCKED_THROUGH = 7;
   const STARS_KEY = (n) => `arcade-games-flow-level-${n}-stars`;
 
-  const DIR = {
-    N: 0,
-    E: 1,
-    S: 2,
-    W: 3,
-  };
+  const DIR = { N: 0, E: 1, S: 2, W: 3 };
+  const DIR_NAMES = ["N", "E", "S", "W"];
 
   /** Neighbor delta for each direction index */
   const DELTA = [
@@ -32,6 +33,10 @@
    * Base openings at rotation 0 (N, E, S, W).
    * Source/target: rotation picks the single open side (not a geometric spin
    * of a multi-arm piece — see computeConnections).
+   *
+   * Oneway is not in BASE — ports come from flowDirection (see below).
+   * Straight-like oneway (opposite sides) mirrors `straight` geometry;
+   * curve-like oneway (adjacent sides) mirrors `curve` geometry.
    */
   const BASE = {
     empty: [false, false, false, false],
@@ -39,6 +44,35 @@
     curve: [true, true, false, false], // N–E
     tjunction: [true, true, false, true], // N, E, W
   };
+
+  function parseFlowDirection(fd) {
+    if (!fd || typeof fd !== "string") return null;
+    const parts = fd.split("-to-");
+    if (parts.length !== 2) return null;
+    const entry = DIR[parts[0]];
+    const exit = DIR[parts[1]];
+    if (entry === undefined || exit === undefined || entry === exit) return null;
+    return { entry, exit };
+  }
+
+  function formatFlowDirection(entry, exit) {
+    return `${DIR_NAMES[entry]}-to-${DIR_NAMES[exit]}`;
+  }
+
+  /** Rotate a cardinal direction index `steps` × 90° clockwise. */
+  function rotateDirIndex(d, steps) {
+    const t = ((steps % 4) + 4) % 4;
+    return (d + t) % 4;
+  }
+
+  function rotateFlowDirection(fd, steps) {
+    const parsed = parseFlowDirection(fd);
+    if (!parsed) return fd;
+    return formatFlowDirection(
+      rotateDirIndex(parsed.entry, steps),
+      rotateDirIndex(parsed.exit, steps)
+    );
+  }
 
   /**
    * Rotate a [N,E,S,W] boolean mask 90° clockwise `times` times.
@@ -60,9 +94,10 @@
   /**
    * @param {string} type
    * @param {0|90|180|270|number} rotation
+   * @param {string} [flowDirection] required for oneway
    * @returns {[boolean,boolean,boolean,boolean]} [N,E,S,W]
    */
-  function computeConnections(type, rotation) {
+  function computeConnections(type, rotation, flowDirection) {
     const steps = ((Number(rotation) / 90) % 4 + 4) % 4;
 
     if (type === "empty") {
@@ -77,6 +112,18 @@
       return conn;
     }
 
+    if (type === "oneway") {
+      // Ports from flowDirection (already in current orientation).
+      // rotation is kept in sync when the player turns the tile; callers
+      // that only pass rotation must also pass the matching flowDirection.
+      const parsed = parseFlowDirection(flowDirection);
+      if (!parsed) return [false, false, false, false];
+      const conn = [false, false, false, false];
+      conn[parsed.entry] = true;
+      conn[parsed.exit] = true;
+      return conn;
+    }
+
     const base = BASE[type];
     if (!base) return [false, false, false, false];
     return rotateMask(base, steps);
@@ -87,9 +134,39 @@
   /* -------------------------------------------------------------------- */
 
   /**
-   * BFS from source. Mutual connections required. Sets flowing on path tiles.
+   * Can flow leave `tile` in direction `d`?
+   * Oneway: only via the exit side (entry is inbound-only).
+   */
+  function canLeave(tile, d) {
+    if (!tile.connections[d]) return false;
+    if (tile.type === "oneway") {
+      const parsed = parseFlowDirection(tile.flowDirection);
+      if (!parsed) return false;
+      return d === parsed.exit;
+    }
+    return true;
+  }
+
+  /**
+   * Can flow enter `tile` from side `entrySide` (the side on this tile)?
+   * Oneway: only via the flowDirection entry.
+   */
+  function canEnter(tile, entrySide) {
+    if (!tile.connections[entrySide]) return false;
+    if (tile.type === "oneway") {
+      const parsed = parseFlowDirection(tile.flowDirection);
+      if (!parsed) return false;
+      return entrySide === parsed.entry;
+    }
+    return true;
+  }
+
+  /**
+   * Multi-color BFS. Each source reaches only the target with the same
+   * colorId. Tiles visited by one color are reserved so paths cannot share.
+   * Oneway tiles enforce entry/exit direction.
    * @param {ReturnType<typeof buildGrid>} grid
-   * @returns {boolean} true if target reached
+   * @returns {boolean} true when every color pair is solved
    */
   function checkSolved(grid) {
     const { rows, cols, cells } = grid;
@@ -97,57 +174,110 @@
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
         cells[r][c].flowing = false;
+        cells[r][c].flowColorId = -1;
       }
     }
 
-    let start = null;
+    /** @type {Array<typeof cells[0][0]>} */
+    const sources = [];
     for (let r = 0; r < rows; r++) {
       for (let c = 0; c < cols; c++) {
-        if (cells[r][c].type === "source") {
-          start = cells[r][c];
+        if (cells[r][c].type === "source") sources.push(cells[r][c]);
+      }
+    }
+    if (!sources.length) return false;
+
+    /** @type {Set<string>} tiles reserved by a completed color path */
+    const used = new Set();
+    let allOk = true;
+
+    // Stable order by colorId then position
+    sources.sort((a, b) => a.colorId - b.colorId || a.row - b.row || a.col - b.col);
+
+    for (const start of sources) {
+      const colorId = start.colorId;
+      const visited = new Set();
+      const queue = [start];
+      const startKey = `${start.row},${start.col}`;
+      visited.add(startKey);
+
+      /** @type {Map<string, string|null>} */
+      const parent = new Map();
+      parent.set(startKey, null);
+
+      let targetTile = null;
+
+      while (queue.length) {
+        const tile = queue.shift();
+        if (tile.type === "target" && tile.colorId === colorId) {
+          targetTile = tile;
           break;
         }
+
+        for (let d = 0; d < 4; d++) {
+          if (!canLeave(tile, d)) continue;
+          const [dr, dc] = DELTA[d];
+          const nr = tile.row + dr;
+          const nc = tile.col + dc;
+          if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
+
+          const neighbor = cells[nr][nc];
+          const key = `${nr},${nc}`;
+          if (visited.has(key)) continue;
+          if (neighbor.type === "empty") continue;
+          if (used.has(key) && key !== startKey) continue;
+
+          // Other colors' terminals are off-limits
+          if (
+            (neighbor.type === "source" || neighbor.type === "target") &&
+            neighbor.colorId !== colorId
+          ) {
+            continue;
+          }
+
+          const entrySide = OPPOSITE[d];
+          // Mutual ports + oneway entry rule
+          if (!neighbor.connections[entrySide]) continue;
+          if (!canEnter(neighbor, entrySide)) continue;
+
+          visited.add(key);
+          parent.set(key, `${tile.row},${tile.col}`);
+          queue.push(neighbor);
+        }
       }
-      if (start) break;
+
+      if (!targetTile) {
+        // Partial feedback: light reachable tiles for this color (not reserved)
+        for (const key of visited) {
+          const [rr, cc] = key.split(",").map(Number);
+          const t = cells[rr][cc];
+          if (t.flowColorId < 0) {
+            t.flowing = true;
+            t.flowColorId = colorId;
+          }
+        }
+        allOk = false;
+        continue;
+      }
+
+      // Reconstruct path and reserve it
+      const pathKeys = [];
+      let cur = `${targetTile.row},${targetTile.col}`;
+      while (cur) {
+        pathKeys.push(cur);
+        cur = parent.get(cur) || null;
+      }
+
+      for (const key of pathKeys) {
+        used.add(key);
+        const [rr, cc] = key.split(",").map(Number);
+        const t = cells[rr][cc];
+        t.flowing = true;
+        t.flowColorId = colorId;
+      }
     }
-    if (!start) return false;
 
-    const visited = new Set();
-    const queue = [start];
-    visited.add(`${start.row},${start.col}`);
-    start.flowing = true;
-
-    let reachedTarget = false;
-
-    while (queue.length) {
-      const tile = queue.shift();
-      if (tile.type === "target") {
-        reachedTarget = true;
-      }
-
-      const conn = tile.connections;
-      for (let d = 0; d < 4; d++) {
-        if (!conn[d]) continue;
-        const [dr, dc] = DELTA[d];
-        const nr = tile.row + dr;
-        const nc = tile.col + dc;
-        if (nr < 0 || nr >= rows || nc < 0 || nc >= cols) continue;
-
-        const neighbor = cells[nr][nc];
-        const key = `${nr},${nc}`;
-        if (visited.has(key)) continue;
-        if (neighbor.type === "empty") continue;
-
-        // Mutual: A opens toward B AND B opens back toward A
-        if (!neighbor.connections[OPPOSITE[d]]) continue;
-
-        visited.add(key);
-        neighbor.flowing = true;
-        queue.push(neighbor);
-      }
-    }
-
-    return reachedTarget;
+    return allOk;
   }
 
   /* -------------------------------------------------------------------- */
@@ -277,7 +407,7 @@
 
   function buildGrid(levelDef) {
     const { rows, cols, tiles } = levelDef;
-    /** @type {Array<Array<{type:string,rotation:number,connections:boolean[],locked:boolean,colorId:number,flowing:boolean,row:number,col:number}>>} */
+    /** @type {Array<Array<object>>} */
     const cells = [];
 
     for (let r = 0; r < rows; r++) {
@@ -290,6 +420,8 @@
           connections: [false, false, false, false],
           locked: false,
           colorId: 0,
+          flowColorId: -1,
+          flowDirection: null,
           flowing: false,
           row: r,
           col: c,
@@ -303,18 +435,30 @@
       cell.type = t.type;
       cell.rotation = t.rotation;
       cell.visualRotation = t.rotation;
-      cell.connections = computeConnections(t.type, t.rotation);
-      cell.locked = false;
-      cell.colorId = 0;
+      cell.locked = !!t.locked;
+      cell.colorId = t.colorId != null ? t.colorId : 0;
+      cell.flowDirection = t.flowDirection || null;
+      cell.connections = computeConnections(
+        t.type,
+        t.rotation,
+        cell.flowDirection
+      );
       cell.flowing = false;
+      cell.flowColorId = -1;
     });
 
-    return { rows, cols, cells, par: levelDef.par, name: levelDef.name, id: levelDef.id };
+    return {
+      rows,
+      cols,
+      cells,
+      par: levelDef.par,
+      name: levelDef.name,
+      id: levelDef.id,
+    };
   }
 
   function pipePathForBase(type) {
     // Drawn at rotation 0; CSS transform rotates the whole SVG group.
-    // viewBox 0 0 100 100, center 50,50. Stubs go to open edges.
     const c = 50;
     const edge = { N: [50, 0], E: [100, 50], S: [50, 100], W: [0, 50] };
 
@@ -340,6 +484,57 @@
     return `M 50 50 L ${edge[0]} ${edge[1]}`;
   }
 
+  /** Oneway pipe + chevron drawn in current flowDirection (no CSS spin). */
+  function onewaySvg(tile) {
+    const parsed = parseFlowDirection(tile.flowDirection);
+    if (!parsed) return "";
+    const edges = [
+      [50, 0],
+      [100, 50],
+      [50, 100],
+      [0, 50],
+    ];
+    const [ex, ey] = edges[parsed.entry];
+    const [xx, xy] = edges[parsed.exit];
+    const path = `M ${ex} ${ey} L 50 50 L ${xx} ${xy}`;
+
+    // Chevron near center, pointing toward exit
+    const dx = xx - 50;
+    const dy = xy - 50;
+    const len = Math.hypot(dx, dy) || 1;
+    const ux = dx / len;
+    const uy = dy / len;
+    const px = -uy;
+    const py = ux;
+    const tipX = 50 + ux * 14;
+    const tipY = 50 + uy * 14;
+    const bX = 50 - ux * 4;
+    const bY = 50 - uy * 4;
+    const chevron = `M ${bX + px * 8} ${bY + py * 8} L ${tipX} ${tipY} L ${
+      bX - px * 8
+    } ${bY - py * 8}`;
+
+    return `
+      <svg class="flow-tile__svg" viewBox="0 0 100 100" aria-hidden="true">
+        <path class="flow-pipe" d="${path}"/>
+        <path class="flow-oneway-arrow" d="${chevron}"/>
+      </svg>`;
+  }
+
+  function colorStops(colorId) {
+    if (colorId === 1) {
+      return { a: "var(--teal-soft)", b: "var(--teal)", glow: "var(--teal)" };
+    }
+    if (colorId === 2) {
+      return {
+        a: "var(--flow-gold-soft)",
+        b: "var(--flow-gold)",
+        glow: "var(--flow-gold)",
+      };
+    }
+    return { a: "var(--pink)", b: "var(--lavender)", glow: "var(--pink)" };
+  }
+
   function tileSvg(tile) {
     const type = tile.type;
 
@@ -348,19 +543,20 @@
     }
 
     if (type === "source") {
-      // Single stub at base north; rotator handles direction
+      const cs = colorStops(tile.colorId);
       return `
         <svg class="flow-tile__svg" viewBox="0 0 100 100" aria-hidden="true">
           <defs>
             <radialGradient id="source-orb-grad-${tile.row}-${tile.col}" cx="50%" cy="50%" r="50%">
-              <stop offset="0%" stop-color="var(--pink)"/>
-              <stop offset="55%" stop-color="var(--lavender)"/>
-              <stop offset="100%" stop-color="var(--lavender)" stop-opacity="0.35"/>
+              <stop offset="0%" stop-color="${cs.a}"/>
+              <stop offset="55%" stop-color="${cs.b}"/>
+              <stop offset="100%" stop-color="${cs.b}" stop-opacity="0.35"/>
             </radialGradient>
           </defs>
           <path class="flow-pipe" d="${stubToward(DIR.N)}"/>
           <circle class="flow-source-orb" cx="50" cy="50" r="16"
-            fill="url(#source-orb-grad-${tile.row}-${tile.col})"/>
+            fill="url(#source-orb-grad-${tile.row}-${tile.col})"
+            style="filter: drop-shadow(0 0 6px ${cs.glow})"/>
         </svg>`;
     }
 
@@ -372,7 +568,10 @@
         </svg>`;
     }
 
-    // straight / curve / tjunction — drawn at rot 0, spun via CSS
+    if (type === "oneway") {
+      return onewaySvg(tile);
+    }
+
     return `
       <svg class="flow-tile__svg" viewBox="0 0 100 100" aria-hidden="true">
         <path class="flow-pipe" d="${pipePathForBase(type)}"/>
@@ -380,7 +579,21 @@
   }
 
   function isRotatable(type) {
-    return type === "straight" || type === "curve" || type === "tjunction";
+    return (
+      type === "straight" ||
+      type === "curve" ||
+      type === "tjunction" ||
+      type === "oneway"
+    );
+  }
+
+  function lockedBadgeHtml() {
+    return `<span class="flow-tile__lock" aria-hidden="true">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
+        <rect x="5" y="11" width="14" height="10" rx="2" fill="currentColor" opacity="0.7"/>
+        <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+    </span>`;
   }
 
   function renderBoard() {
@@ -393,37 +606,57 @@
     for (let r = 0; r < grid.rows; r++) {
       for (let c = 0; c < grid.cols; c++) {
         const tile = grid.cells[r][c];
-        const el = document.createElement(
-          isRotatable(tile.type) ? "button" : "div"
-        );
+        const rotatable = isRotatable(tile.type) && !tile.locked;
+        const el = document.createElement(rotatable ? "button" : "div");
         el.className = `flow-tile flow-tile--${tile.type}`;
         if (isRotatable(tile.type)) el.classList.add("flow-tile--pipe");
+        if (tile.locked) el.classList.add("flow-tile--locked");
+        el.dataset.color = String(
+          tile.type === "source" || tile.type === "target"
+            ? tile.colorId
+            : tile.flowColorId >= 0
+              ? tile.flowColorId
+              : tile.colorId
+        );
         el.setAttribute("role", "gridcell");
         el.dataset.row = String(r);
         el.dataset.col = String(c);
 
-        if (isRotatable(tile.type)) {
+        if (rotatable) {
           el.type = "button";
           el.setAttribute(
             "aria-label",
             `${tile.type} pipe, rotation ${tile.rotation} degrees. Activate to rotate.`
           );
           el.addEventListener("click", () => onTileClick(r, c));
+        } else if (tile.locked && isRotatable(tile.type)) {
+          el.setAttribute(
+            "aria-label",
+            `${tile.type} pipe, locked at ${tile.rotation} degrees`
+          );
         } else if (tile.type === "source") {
-          el.setAttribute("aria-label", "Source light");
+          el.setAttribute("aria-label", `Source light, color ${tile.colorId}`);
         } else if (tile.type === "target") {
-          el.setAttribute("aria-label", "Target socket");
+          el.setAttribute("aria-label", `Target socket, color ${tile.colorId}`);
         } else {
           el.setAttribute("aria-hidden", "true");
         }
 
         const rotator = document.createElement("div");
         rotator.className = "flow-tile__rotator";
-        // Source/target: visual drawn at N; rotate to match opening side
-        // Pipes: visual at base 0; rotate to match tile.rotation
-        rotator.style.transform = `rotate(${tile.visualRotation}deg)`;
+        // Oneway geometry is drawn in absolute NESW; skip CSS spin.
+        // Source/target/pipes: visual at base 0, spun to match rotation.
+        if (tile.type === "oneway") {
+          rotator.style.transform = "rotate(0deg)";
+        } else {
+          rotator.style.transform = `rotate(${tile.visualRotation}deg)`;
+        }
         rotator.innerHTML = tileSvg(tile);
         el.appendChild(rotator);
+
+        if (tile.locked && isRotatable(tile.type)) {
+          el.insertAdjacentHTML("beforeend", lockedBadgeHtml());
+        }
 
         flowGridEl.appendChild(el);
         tileEls.set(`${r},${c}`, el);
@@ -445,6 +678,13 @@
           "is-solved-target",
           tile.type === "target" && solved && tile.flowing
         );
+        const color =
+          tile.flowColorId >= 0
+            ? tile.flowColorId
+            : tile.type === "source" || tile.type === "target"
+              ? tile.colorId
+              : 0;
+        el.dataset.color = String(color);
       }
     }
   }
@@ -454,9 +694,14 @@
     if (!el) return;
     const rotator = el.querySelector(".flow-tile__rotator");
     if (rotator) {
-      rotator.style.transform = `rotate(${tile.visualRotation}deg)`;
+      if (tile.type === "oneway") {
+        rotator.style.transform = "rotate(0deg)";
+        rotator.innerHTML = tileSvg(tile);
+      } else {
+        rotator.style.transform = `rotate(${tile.visualRotation}deg)`;
+      }
     }
-    if (isRotatable(tile.type)) {
+    if (isRotatable(tile.type) && !tile.locked) {
       el.setAttribute(
         "aria-label",
         `${tile.type} pipe, rotation ${tile.rotation} degrees. Activate to rotate.`
@@ -474,8 +719,17 @@
     if (!isRotatable(tile.type) || tile.locked) return;
 
     tile.visualRotation = (tile.visualRotation || tile.rotation) + 90;
-    tile.rotation = tile.visualRotation % 360;
-    tile.connections = computeConnections(tile.type, tile.rotation);
+    tile.rotation = ((tile.visualRotation % 360) + 360) % 360;
+
+    if (tile.type === "oneway") {
+      tile.flowDirection = rotateFlowDirection(tile.flowDirection, 1);
+    }
+
+    tile.connections = computeConnections(
+      tile.type,
+      tile.rotation,
+      tile.flowDirection
+    );
     moveCount += 1;
     hudMoves.textContent = String(moveCount);
     syncRotator(tile);
@@ -492,7 +746,6 @@
       solved = true;
       const stars = starsForMoves(moveCount, grid.par);
       saveBestStars(grid.id, stars);
-      // Brief beat so flow/target glow reads before modal
       window.setTimeout(() => openCompleteModal(stars), 420);
     }
   }
@@ -564,12 +817,14 @@
     }
   });
 
-  // Expose helpers for debugging / tests
   window.FlowGame = {
     computeConnections,
     checkSolved,
     rotateMask,
+    rotateFlowDirection,
+    parseFlowDirection,
     starsForMoves,
+    buildGrid,
   };
 
   renderLevelSelect();

@@ -1,5 +1,10 @@
 /* Flow — pipe-connection puzzle */
 
+:root {
+  --flow-gold: #d4b56a;
+  --flow-gold-soft: #e8d5a3;
+}
+
 .flow-section-title {
   text-align: center;
   margin: 0 0 var(--space-5);
@@ -141,6 +146,37 @@
   box-shadow: var(--shadow-lift);
 }
 
+.flow-tile--locked {
+  cursor: default;
+  background:
+    repeating-linear-gradient(
+      -45deg,
+      transparent,
+      transparent 5px,
+      color-mix(in srgb, var(--lavender) 14%, transparent) 5px,
+      color-mix(in srgb, var(--lavender) 14%, transparent) 6px
+    ),
+    linear-gradient(145deg, var(--cream), var(--lavender-soft));
+}
+
+.flow-tile--locked:hover {
+  box-shadow: var(--shadow-soft);
+}
+
+.flow-tile__lock {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 2;
+  display: grid;
+  place-items: center;
+  width: 1.1rem;
+  height: 1.1rem;
+  color: var(--ink-muted);
+  opacity: 0.55;
+  pointer-events: none;
+}
+
 .flow-tile--empty {
   background: color-mix(in srgb, var(--cream) 70%, var(--lavender-soft));
   box-shadow: none;
@@ -166,7 +202,7 @@
   display: block;
 }
 
-/* Pipe strokes */
+/* Pipe strokes — idle teal; flowing recolors by data-color palette */
 .flow-pipe {
   fill: none;
   stroke: var(--teal);
@@ -175,11 +211,78 @@
   stroke-linejoin: round;
 }
 
+.flow-oneway-arrow {
+  fill: none;
+  stroke: color-mix(in srgb, var(--ink-muted) 70%, var(--cream));
+  stroke-width: 5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  pointer-events: none;
+}
+
+.flow-tile.is-flowing .flow-oneway-arrow {
+  stroke: color-mix(in srgb, var(--cream) 40%, var(--ink));
+}
+
 .flow-tile.is-flowing .flow-pipe {
-  stroke: var(--pink);
-  filter: drop-shadow(0 0 4px var(--lavender));
   stroke-dasharray: 8 6;
   animation: flow-dash 0.9s linear infinite;
+}
+
+/* Endpoint idle tint by colorId */
+.flow-tile--source[data-color="0"] .flow-pipe,
+.flow-tile--target[data-color="0"] .flow-pipe {
+  stroke: color-mix(in srgb, var(--teal) 45%, var(--pink));
+}
+.flow-tile--source[data-color="1"] .flow-pipe,
+.flow-tile--target[data-color="1"] .flow-pipe {
+  stroke: var(--teal);
+}
+.flow-tile--source[data-color="2"] .flow-pipe,
+.flow-tile--target[data-color="2"] .flow-pipe {
+  stroke: color-mix(in srgb, var(--flow-gold) 65%, var(--teal));
+}
+
+/* Color 0 — pink (flowing) */
+.flow-tile[data-color="0"].is-flowing .flow-pipe {
+  stroke: var(--pink);
+  filter: drop-shadow(0 0 4px var(--lavender));
+}
+.flow-tile[data-color="0"] .flow-target-ring {
+  stroke: var(--lavender);
+}
+.flow-tile[data-color="0"].is-solved-target .flow-target-ring {
+  fill: var(--pink);
+  stroke: var(--pink);
+  filter: drop-shadow(0 0 8px var(--lavender));
+}
+
+/* Color 1 — teal (flowing) */
+.flow-tile[data-color="1"].is-flowing .flow-pipe {
+  stroke: var(--teal);
+  filter: drop-shadow(0 0 4px var(--teal-soft));
+}
+.flow-tile[data-color="1"] .flow-target-ring {
+  stroke: var(--teal);
+}
+.flow-tile[data-color="1"].is-solved-target .flow-target-ring {
+  fill: var(--teal);
+  stroke: var(--teal);
+  filter: drop-shadow(0 0 8px var(--teal-soft));
+}
+
+/* Color 2 — warm gold (flowing) */
+.flow-tile[data-color="2"].is-flowing .flow-pipe {
+  stroke: var(--flow-gold);
+  filter: drop-shadow(0 0 4px var(--flow-gold-soft));
+}
+.flow-tile[data-color="2"] .flow-target-ring {
+  stroke: var(--flow-gold);
+}
+.flow-tile[data-color="2"].is-solved-target .flow-target-ring {
+  fill: var(--flow-gold);
+  stroke: var(--flow-gold);
+  filter: drop-shadow(0 0 8px var(--flow-gold-soft));
 }
 
 @keyframes flow-dash {
@@ -217,10 +320,7 @@
 }
 
 .flow-tile.is-solved-target .flow-target-ring {
-  fill: var(--pink);
-  stroke: var(--pink);
   stroke-dasharray: none;
-  filter: drop-shadow(0 0 8px var(--lavender));
   animation: target-fill-pulse 0.9s ease-in-out 2;
 }
 
