@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Peek-a-Boo · Aracage Games</title>
+    <link rel="stylesheet" href="../../styles/theme.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div id="site-nav" data-base="../.."></div>
+
+      <main class="page-main page-main--game">
+        <header class="game-header">
+          <h1>Peek-a-Boo</h1>
+          <p class="lede">Tap the shapes before they duck away.</p>
+        </header>
+
+        <div class="game-shell">
+          <div class="hud">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat__label">Score</span>
+                <span class="stat__value" id="score">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">Time</span>
+                <span class="stat__value" id="time">30</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">Best</span>
+                <span class="stat__value" id="best">0</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn--primary" id="start-btn">
+              Start
+            </button>
+          </div>
+
+          <div class="board-wrap peek-wrap">
+            <div class="peek-grid" id="grid" aria-label="Peek-a-boo holes"></div>
+
+            <div class="modal-backdrop" id="overlay" aria-hidden="true">
+              <div class="modal-card" role="dialog" aria-labelledby="end-title">
+                <h2 id="end-title">Time’s up!</h2>
+                <p id="end-msg">Nice reflexes.</p>
+                <button type="button" class="btn btn--primary" id="again-btn">
+                  Play Again
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+    </div>
+
+    <script src="../../js/shell.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

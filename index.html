@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta
+      name="description"
+      content="Aracage Games — a cozy collection of classic browser games."
+    />
+    <title>Aracage Games</title>
+    <link rel="stylesheet" href="styles/theme.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div id="site-nav" data-base="." data-hub="true"></div>
+
+      <main class="page-main">
+        <header class="section-header">
+          <h1>Aracage Games</h1>
+          <p class="lede">
+            Soft geometry, gentle colors, classic play. Pick a game and settle
+            in — no accounts, no noise, just the arcade.
+          </p>
+        </header>
+
+        <ul id="game-grid" class="game-grid" aria-label="Available games"></ul>
+      </main>
+
+      <footer class="site-footer">
+        Built for quiet evenings · Hosted as a static site
+      </footer>
+    </div>
+
+    <script src="js/shell.js"></script>
+    <script src="games/games-registry.js"></script>
+    <script src="js/hub.js"></script>
+  </body>
+</html>

@@ -1,0 +1,103 @@
+/* Memory Match — flip cards */
+
+.memory-grid {
+  display: grid;
+  gap: 0.65rem;
+  justify-content: center;
+}
+
+.memory-grid[data-cols="4"] {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.memory-grid[data-cols="6"] {
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 0.45rem;
+}
+
+.mem-card {
+  aspect-ratio: 3 / 4;
+  perspective: 800px;
+  border: none;
+  background: transparent;
+  padding: 0;
+  cursor: pointer;
+  border-radius: var(--radius-sm);
+}
+
+.mem-card:disabled {
+  cursor: default;
+}
+
+.mem-card__inner {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 320ms ease;
+  border-radius: var(--radius-sm);
+}
+
+.mem-card.is-flipped .mem-card__inner,
+.mem-card.is-matched .mem-card__inner {
+  transform: rotateY(180deg);
+}
+
+.mem-card__face {
+  position: absolute;
+  inset: 0;
+  backface-visibility: hidden;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  box-shadow: var(--shadow-soft);
+}
+
+.mem-card__back {
+  background:
+    radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.35) 0 12%, transparent 13%),
+    radial-gradient(circle at 70% 65%, rgba(255, 255, 255, 0.25) 0 10%, transparent 11%),
+    linear-gradient(145deg, var(--lavender), var(--teal));
+}
+
+.mem-card__back::after {
+  content: "";
+  width: 42%;
+  height: 42%;
+  border-radius: 10px;
+  border: 2px solid rgba(245, 239, 227, 0.55);
+  background: rgba(245, 239, 227, 0.2);
+}
+
+.mem-card__front {
+  background: var(--cream);
+  transform: rotateY(180deg);
+}
+
+.mem-card__front svg {
+  width: 55%;
+  height: 55%;
+}
+
+.mem-card.is-matched .mem-card__front {
+  background: var(--teal-soft);
+  box-shadow: 0 0 0 3px rgba(127, 199, 196, 0.45), var(--shadow-soft);
+}
+
+.mem-card:hover:not(:disabled):not(.is-flipped):not(.is-matched) .mem-card__inner {
+  transform: translateY(-3px);
+}
+
+.mem-card:focus-visible {
+  outline: none;
+}
+
+.mem-card:focus-visible .mem-card__inner {
+  box-shadow: 0 0 0 3px var(--lavender);
+}
+
+@media (max-width: 480px) {
+  .memory-grid[data-cols="6"] {
+    gap: 0.35rem;
+  }
+}

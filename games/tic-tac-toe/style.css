@@ -1,0 +1,112 @@
+/* Tic-Tac-Toe */
+
+.mode-row {
+  margin-top: calc(var(--space-2) * -1);
+}
+
+.ttt-wrap {
+  padding: var(--space-5);
+  max-width: 420px;
+  margin-inline: auto;
+  width: 100%;
+}
+
+.ttt-board {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  gap: 0.75rem;
+  aspect-ratio: 1;
+}
+
+.ttt-cell {
+  /* Fixed square size regardless of content — sizing comes purely from the
+     grid tracks above, never from the "X"/"O" glyph, so cells never resize
+     when marked. */
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  border: none;
+  border-radius: var(--radius-md);
+  background: var(--cream);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(2rem, 10vw, 3rem);
+  line-height: 1;
+  color: var(--ink);
+  transition: transform var(--transition-fast), background var(--transition-fast);
+}
+
+.ttt-cell:hover:not(:disabled) {
+  transform: scale(1.04);
+  background: #efe6d6;
+}
+
+.ttt-cell:disabled {
+  cursor: default;
+}
+
+.ttt-cell[data-mark="X"] {
+  color: var(--ink);
+  background: var(--lavender-soft);
+}
+
+.ttt-cell[data-mark="O"] {
+  color: var(--ink);
+  background: var(--teal-soft);
+}
+
+.ttt-cell.is-win {
+  background: var(--pink-soft);
+  box-shadow: 0 0 0 3px rgba(232, 180, 184, 0.55), var(--shadow-soft);
+}
+
+.win-line {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+}
+
+.win-line line {
+  stroke: var(--pink);
+  stroke-width: 3.5;
+  stroke-linecap: round;
+  stroke-dasharray: 160;
+  stroke-dashoffset: 160;
+  opacity: 0;
+}
+
+.win-line.is-visible line {
+  opacity: 1;
+  animation: draw-line 520ms ease forwards;
+}
+
+@keyframes draw-line {
+  to {
+    stroke-dashoffset: 0;
+  }
+}
+
+.status {
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 1.1rem;
+  color: var(--ink) !important;
+  margin: 0;
+  min-height: 1.5em;
+}
+
+.hint {
+  font-size: 0.9rem;
+  margin: 0;
+}

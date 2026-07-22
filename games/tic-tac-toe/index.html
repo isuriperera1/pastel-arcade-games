@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tic-Tac-Toe · Aracage Games</title>
+    <link rel="stylesheet" href="../../styles/theme.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div id="site-nav" data-base="../.."></div>
+
+      <main class="page-main page-main--game">
+        <header class="game-header">
+          <h1>Tic-Tac-Toe</h1>
+          <p class="lede">Three in a row. Local duel or vs AI.</p>
+        </header>
+
+        <div class="game-shell">
+          <div class="hud">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat__label">X</span>
+                <span class="stat__value" id="score-x">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">Draws</span>
+                <span class="stat__value" id="score-draw">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">O</span>
+                <span class="stat__value" id="score-o">0</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn--primary" id="play-again">
+              Play Again
+            </button>
+          </div>
+
+          <div class="text-center mode-row">
+            <div class="seg" role="group" aria-label="Game mode">
+              <button type="button" class="seg__btn is-active" data-mode="pvp" aria-pressed="true">
+                2 Players
+              </button>
+              <button type="button" class="seg__btn" data-mode="ai" aria-pressed="false">
+                vs AI
+              </button>
+            </div>
+          </div>
+
+          <p class="status muted text-center" id="status" aria-live="polite">
+            X’s turn
+          </p>
+
+          <div class="board-wrap ttt-wrap">
+            <div class="ttt-board" id="board" role="grid" aria-label="Tic-tac-toe board">
+              <button type="button" class="ttt-cell" data-i="0" role="gridcell" aria-label="Cell 1"></button>
+              <button type="button" class="ttt-cell" data-i="1" role="gridcell" aria-label="Cell 2"></button>
+              <button type="button" class="ttt-cell" data-i="2" role="gridcell" aria-label="Cell 3"></button>
+              <button type="button" class="ttt-cell" data-i="3" role="gridcell" aria-label="Cell 4"></button>
+              <button type="button" class="ttt-cell" data-i="4" role="gridcell" aria-label="Cell 5"></button>
+              <button type="button" class="ttt-cell" data-i="5" role="gridcell" aria-label="Cell 6"></button>
+              <button type="button" class="ttt-cell" data-i="6" role="gridcell" aria-label="Cell 7"></button>
+              <button type="button" class="ttt-cell" data-i="7" role="gridcell" aria-label="Cell 8"></button>
+              <button type="button" class="ttt-cell" data-i="8" role="gridcell" aria-label="Cell 9"></button>
+              <svg class="win-line" id="win-line" viewBox="0 0 100 100" aria-hidden="true">
+                <line x1="0" y1="0" x2="0" y2="0" />
+              </svg>
+            </div>
+          </div>
+
+          <p class="muted text-center hint">
+            Scores persist across rounds on this device.
+          </p>
+        </div>
+      </main>
+    </div>
+
+    <script src="../../js/shell.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

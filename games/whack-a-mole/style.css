@@ -1,0 +1,119 @@
+/* Peek-a-Boo (whack-a-mole themed) */
+
+.peek-wrap {
+  max-width: 480px;
+  margin-inline: auto;
+  width: 100%;
+  background: linear-gradient(180deg, #d5ecea 0%, var(--cream) 55%);
+}
+
+.peek-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1rem 0.85rem;
+}
+
+.hole {
+  position: relative;
+  aspect-ratio: 1;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-md);
+  background: rgba(58, 49, 89, 0.06);
+  border: none;
+  padding: 0;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.hole:focus-visible {
+  outline: 3px solid var(--lavender);
+  outline-offset: 3px;
+}
+
+.hole__well {
+  position: absolute;
+  bottom: 12%;
+  width: 72%;
+  height: 28%;
+  border-radius: 50%;
+  background: rgba(58, 49, 89, 0.18);
+  box-shadow: var(--shadow-inset);
+  z-index: 1;
+}
+
+.critter {
+  position: relative;
+  z-index: 2;
+  width: 58%;
+  aspect-ratio: 1;
+  border-radius: 50% 50% 42% 42%;
+  background: var(--lavender);
+  transform: translateY(110%);
+  transition: transform 160ms ease;
+  display: grid;
+  place-items: center;
+  pointer-events: none;
+}
+
+.critter::before,
+.critter::after {
+  content: "";
+  position: absolute;
+  width: 18%;
+  height: 18%;
+  border-radius: 50%;
+  background: var(--ink);
+  top: 34%;
+}
+
+.critter::before {
+  left: 26%;
+}
+.critter::after {
+  right: 26%;
+}
+
+.critter__mouth {
+  position: absolute;
+  bottom: 28%;
+  width: 28%;
+  height: 10%;
+  border-radius: 0 0 999px 999px;
+  background: var(--ink);
+  opacity: 0.75;
+}
+
+.hole.is-up .critter {
+  transform: translateY(8%);
+}
+
+.hole.is-hit .critter {
+  background: var(--pink);
+  transform: translateY(8%) scale(0.9);
+}
+
+.hole[data-hue="0"] .critter {
+  background: var(--lavender);
+}
+.hole[data-hue="1"] .critter {
+  background: var(--teal);
+}
+.hole[data-hue="2"] .critter {
+  background: var(--pink);
+}
+.hole[data-hue="3"] .critter {
+  background: #9bc4c8;
+}
+
+.hole.is-up:active .critter {
+  transform: translateY(8%) scale(0.92);
+}
+
+@media (max-width: 400px) {
+  .peek-grid {
+    gap: 0.65rem;
+  }
+}

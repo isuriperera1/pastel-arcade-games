@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>2048 · Aracage Games</title>
+    <link rel="stylesheet" href="../../styles/theme.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div id="site-nav" data-base="../.."></div>
+
+      <main class="page-main page-main--game">
+        <header class="game-header">
+          <h1>2048</h1>
+          <p class="lede">Merge matching tiles. Reach 2048 to win.</p>
+        </header>
+
+        <div class="game-shell">
+          <div class="hud">
+            <div class="stat-row">
+              <div class="stat">
+                <span class="stat__label">Score</span>
+                <span class="stat__value" id="score">0</span>
+              </div>
+              <div class="stat">
+                <span class="stat__label">Best</span>
+                <span class="stat__value" id="best">0</span>
+              </div>
+            </div>
+            <button type="button" class="btn btn--primary" id="new-game">
+              New Game
+            </button>
+          </div>
+
+          <div class="board-wrap" id="board-wrap">
+            <div
+              class="grid-2048"
+              id="board"
+              role="grid"
+              aria-label="2048 board"
+              tabindex="0"
+            >
+              <div class="grid-2048__bg" id="board-bg" aria-hidden="true"></div>
+              <div class="grid-2048__tiles" id="board-tiles"></div>
+            </div>
+
+            <div class="modal-backdrop" id="overlay" aria-hidden="true">
+              <div class="modal-card" role="dialog" aria-labelledby="overlay-title">
+                <h2 id="overlay-title">You win!</h2>
+                <p id="overlay-msg">Nice merge streak.</p>
+                <div class="btn-group">
+                  <button type="button" class="btn btn--primary" id="overlay-restart">
+                    New Game
+                  </button>
+                  <button type="button" class="btn btn--ghost" id="overlay-continue">
+                    Keep Going
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <p class="muted text-center hint">
+            Use arrow keys or swipe. Focus the board for keyboard play.
+          </p>
+        </div>
+      </main>
+    </div>
+
+    <script src="../../js/shell.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

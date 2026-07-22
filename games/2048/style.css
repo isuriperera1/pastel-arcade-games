@@ -1,0 +1,156 @@
+/* 2048 — game-specific styles (theme tokens from theme.css) */
+
+.grid-2048 {
+  position: relative;
+  background: var(--lavender-soft);
+  border-radius: var(--radius-md);
+  padding: 0.65rem;
+  aspect-ratio: 1;
+  max-width: 100%;
+  outline: none;
+  touch-action: none;
+  user-select: none;
+}
+
+.grid-2048:focus-visible {
+  box-shadow: 0 0 0 3px var(--lavender);
+}
+
+/* Static empty slots — these never move, they just show the "holes" tiles slide across */
+.grid-2048__bg {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.65rem;
+  width: 100%;
+  height: 100%;
+}
+
+.cell-bg {
+  aspect-ratio: 1;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.45);
+}
+
+/* Tiles float above the static grid and animate between cells */
+.grid-2048__tiles {
+  position: absolute;
+  inset: 0.65rem;
+}
+
+.tile {
+  position: absolute;
+  top: 0;
+  left: 0;
+  transition: transform 120ms ease-in-out;
+  will-change: transform;
+}
+
+.tile__face {
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius-sm);
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: clamp(1.1rem, 5vw, 1.75rem);
+  color: var(--ink);
+  background: #f5efe3;
+}
+
+.tile--new .tile__face {
+  animation: pop-in 160ms ease;
+}
+
+.tile--pop .tile__face {
+  animation: pop-merge 200ms ease;
+}
+
+@keyframes pop-in {
+  from {
+    transform: scale(0.4);
+    opacity: 0.4;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes pop-merge {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}
+
+/* Pastel value palette */
+.tile[data-v="2"] .tile__face {
+  background: #f5efe3;
+  color: var(--ink);
+}
+.tile[data-v="4"] .tile__face {
+  background: #e8ddd0;
+  color: var(--ink);
+}
+.tile[data-v="8"] .tile__face {
+  background: var(--pink);
+  color: var(--ink);
+}
+.tile[data-v="16"] .tile__face {
+  background: var(--pink-soft);
+  color: var(--ink);
+}
+.tile[data-v="32"] .tile__face {
+  background: var(--lavender);
+  color: var(--ink);
+}
+.tile[data-v="64"] .tile__face {
+  background: var(--lavender-soft);
+  color: var(--ink);
+}
+.tile[data-v="128"] .tile__face {
+  background: var(--teal);
+  color: var(--ink);
+  font-size: clamp(1rem, 4.5vw, 1.5rem);
+}
+.tile[data-v="256"] .tile__face {
+  background: var(--teal-soft);
+  color: var(--ink);
+  font-size: clamp(1rem, 4.5vw, 1.5rem);
+}
+.tile[data-v="512"] .tile__face {
+  background: #9bc4c8;
+  color: var(--ink);
+  font-size: clamp(0.95rem, 4vw, 1.35rem);
+}
+.tile[data-v="1024"] .tile__face {
+  background: #6a9e9c;
+  color: var(--cream);
+  font-size: clamp(0.85rem, 3.5vw, 1.15rem);
+}
+.tile[data-v="2048"] .tile__face {
+  background: var(--ink);
+  color: var(--cream);
+  font-size: clamp(0.85rem, 3.5vw, 1.15rem);
+}
+.tile[data-v="4096"] .tile__face,
+.tile[data-v="8192"] .tile__face {
+  background: #2a2342;
+  color: var(--pink);
+  font-size: clamp(0.75rem, 3vw, 1rem);
+}
+
+#overlay-continue.hidden {
+  display: none;
+}
+
+.hint {
+  font-size: 0.9rem;
+  margin: 0;
+}
