@@ -74,6 +74,38 @@
                 <span>Quick stride · higher jump</span>
               </button>
             </div>
+
+            <fieldset class="theme-picker">
+              <legend class="theme-picker__legend">Journey light</legend>
+              <p class="muted text-center theme-picker__hint">
+                Atmosphere only — Morning or Night, same path.
+              </p>
+              <div class="theme-grid" role="radiogroup" aria-label="Theme">
+                <button
+                  type="button"
+                  class="theme-card is-selected"
+                  data-theme="morning"
+                  role="radio"
+                  aria-checked="true"
+                >
+                  <span class="theme-card__swatch theme-card__swatch--morning" aria-hidden="true"></span>
+                  <strong>Morning</strong>
+                  <span>Warm sun &amp; clouds</span>
+                </button>
+                <button
+                  type="button"
+                  class="theme-card"
+                  data-theme="night"
+                  role="radio"
+                  aria-checked="false"
+                >
+                  <span class="theme-card__swatch theme-card__swatch--night" aria-hidden="true"></span>
+                  <strong>Night</strong>
+                  <span>Moonlight &amp; stars</span>
+                </button>
+              </div>
+            </fieldset>
+
             <div class="btn-group">
               <button type="button" class="btn btn--ghost" id="btn-back-menu">
                 Back

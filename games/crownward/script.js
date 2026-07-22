@@ -6,15 +6,18 @@
  * Unlock (golden trim): arcade-games-crownward-unlock
  *
  * Visual system notes:
- *  - Backgrounds are drawn procedurally in 3 parallax layers (far/mid/near)
+ *  - Backgrounds are drawn procedurally in 3+ parallax layers (far/mid/decor/near)
  *    per zone, using tiled sine/hash-based shapes rather than baked images —
  *    keeps the world scrollable to infinity with no seams and stays cheap.
  *  - Zones: Enchanted Forest → Village → Castle → Grand Castle, each with its
  *    own cool/warm palette but sharing one recurring "warm glow" accent
  *    (mushroom glow → lantern glow → torch glow → sunset glow).
+ *  - Morning / Night theme swaps zone palettes + sky creatures (birds vs bats/
+ *    fireflies) without changing gameplay difficulty.
  *  - Obstacles are styled by *material* (fence/hedge/rock/crate/stone/vine/
  *    wood/ladder) so jump-over vs climbable reads at a glance, with a dark
  *    rim outline + light-side highlight to separate them from the backdrop.
+ *  - Jump feel: inset hitbox, coyote time, and jump buffer (Chrome Dino–inspired).
  */
 (function () {
   "use strict";
@@ -266,6 +269,7 @@
       positionX: player ? Math.round(player.x) : 0,
       causeOfDeath: null,
       character: selectedChar || null,
+      theme: selectedTheme,
       attemptNumber,
       ...extra,
     };
@@ -335,9 +339,13 @@
       checkpoints.push({ x: z0 + 80, y: GROUND_Y, zone: zone.id, id: `${zone.id}-start` });
       checkpoints.push({ x: mid, y: GROUND_Y, zone: zone.id, id: `${zone.id}-mid` });
 
-      // Zone-flavored scenery: trees (forest) → cottages (village) → castle walls (castle/grand)
-      const sceneryType = zi === 0 ? "tree" : zi === 1 ? "cottage" : "castle";
-      const sceneryCount = zi === 0 ? 16 : zi === 1 ? 8 : zi === 2 ? 5 : 3;
+      // Zone-flavored scenery: trees (forest) → town buildings (village) → castle walls
+      // Village mixes cottages with market stalls, forges, and two-story townhouses.
+      let sceneryTypes;
+      if (zi === 0) sceneryTypes = ["tree"];
+      else if (zi === 1) sceneryTypes = ["cottage", "market_stall", "forge", "townhouse", "cottage"];
+      else sceneryTypes = ["castle"];
+      const sceneryCount = zi === 0 ? 16 : zi === 1 ? 12 : zi === 2 ? 5 : 3;
       for (let i = 0; i < sceneryCount; i++) {
         const sx = z0 + 200 + rand() * (z1 - z0 - 400);
         const scale =
@@ -348,6 +356,7 @@
             : zi === 3
             ? 1.7 + rand() * 0.5
             : 1 + rand() * 0.3;
+        const sceneryType = sceneryTypes[Math.floor(rand() * sceneryTypes.length)];
         scenery.push({ type: sceneryType, x: sx, scale, tier: zi, seed: Math.floor(rand() * 1e6) });
       }
 
@@ -366,12 +375,15 @@
       let cursor = z0 + 500;
       while (cursor < z1 - 600) {
         const roll = rand();
-        const density = 0.55 + zi * 0.12;
+        // Soft Enchanted Forest: sparse + small obstacles; density ramps from Village
+        const density = zi === 0 ? 0.38 : 0.55 + (zi - 1) * 0.14;
+        const gapMul = zi === 0 ? 0.55 : 1;
+        const spaceMul = zi === 0 ? 1.45 : 1;
 
         if (roll < 0.18 * density) {
-          // Pit — gap in the ground, then a landing pad
-          const gap = 70 + zi * 25 + rand() * (40 + zi * 20);
-          const run = 180 + rand() * 220;
+          // Pit — forest gaps stay easily jumpable; later zones widen
+          const gap = (zi === 0 ? 48 : 70) + zi * 22 * gapMul + rand() * ((zi === 0 ? 22 : 40) + zi * 18);
+          const run = (180 + rand() * 220) * spaceMul;
           const landW = 160 + rand() * 100;
           addGround(x, cursor);
           pits.push({ x: cursor, w: gap });
@@ -380,32 +392,35 @@
           x = cursor + gap + landW;
           cursor = x + run;
         } else if (roll < 0.38 * density) {
-          // Low obstacle (duck) — jump-over language: bright, low, crossable
+          // Low obstacle (duck) — forest: short + narrow, nearly unmissable
+          const lowH = zi === 0 ? 28 + rand() * 6 : 38;
+          const lowW = zi === 0 ? 48 + rand() * 20 : 70 + rand() * 40;
           hazards.push({
             x: cursor,
-            y: GROUND_Y - 38,
-            w: 70 + rand() * 40,
-            h: 38,
+            y: GROUND_Y - lowH,
+            w: lowW,
+            h: lowH,
             type: "low",
             material: LOW_MATERIAL[zi],
             zi,
           });
-          cursor += 220 + rand() * 180;
+          cursor += (220 + rand() * 180) * spaceMul;
         } else if (roll < 0.58 * density) {
-          // Jump block — rock / fence / crate / stone depending on zone
+          // Jump block — forest tallest ≈ 40px (clearance margin under ~64–75px jump)
+          const blockH = zi === 0 ? 34 + rand() * 6 : 48 + zi * 8;
           hazards.push({
             x: cursor,
-            y: GROUND_Y - (48 + zi * 8),
-            w: 36 + rand() * 20,
-            h: 48 + zi * 8,
+            y: GROUND_Y - blockH,
+            w: zi === 0 ? 28 + rand() * 12 : 36 + rand() * 20,
+            h: blockH,
             type: "block",
             material: BLOCK_MATERIAL[zi],
             zi,
           });
-          cursor += 200 + rand() * 160;
+          cursor += (200 + rand() * 160) * spaceMul;
         } else if (roll < 0.78 * density) {
           // Climbable — vine / wood / stone, always rung/line-textured
-          const h = 90 + zi * 40 + rand() * 50;
+          const h = (zi === 0 ? 70 : 90) + zi * 40 + rand() * 50;
           climbables.push({
             x: cursor,
             y: GROUND_Y - h,
@@ -416,7 +431,7 @@
             zi,
           });
           platforms.push({ x: cursor - 20, y: GROUND_Y - h, w: 100 + rand() * 60, h: 18, type: "platform" });
-          cursor += 280 + rand() * 200;
+          cursor += (280 + rand() * 200) * spaceMul;
         } else if (zi >= 2 && roll < 0.9) {
           // Moving platform (castle / grand)
           const mx = cursor;
@@ -434,7 +449,7 @@
           });
           cursor += 300 + rand() * 150;
         } else {
-          cursor += 160 + rand() * 120;
+          cursor += (160 + rand() * 120) * spaceMul;
         }
 
         if (rand() < 0.12) {
@@ -499,6 +514,10 @@
       invuln: 0,
       animPhase: 0, // drives walk-cycle limb swing
       stumble: 0, // >0 while playing the fail/stumble pose
+      coyote: 0, // remaining grace time after leaving ground
+      jumpBuffer: 0, // remaining time to honor a pre-land jump press
+      jumpHeld: false,
+      wasOnGround: true,
     };
   }
 
@@ -506,10 +525,18 @@
     return a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
   }
 
+  /** Effective collider — inset vs drawn sprite (Chrome Dino–style forgiveness). */
   function playerBox(p) {
-    const h = p.crouching ? p.h * 0.55 : p.h;
-    const y = p.crouching ? p.y + p.h - h : p.y;
-    return { x: p.x, y, w: p.w, h };
+    const insetX = 5;
+    const insetTop = 8;
+    const hFull = p.crouching ? p.h * 0.55 : p.h;
+    const yBase = p.crouching ? p.y + p.h - hFull : p.y;
+    return {
+      x: p.x + insetX,
+      y: yBase + insetTop,
+      w: Math.max(10, p.w - insetX * 2),
+      h: Math.max(12, hFull - insetTop),
+    };
   }
 
   /* ======================================================================== */
@@ -534,6 +561,11 @@
     p.crouching = keys.down && p.onGround && !p.climbing;
     const boxH = p.crouching ? p.h * 0.55 : p.h;
 
+    // Jump buffer: remember a fresh press briefly (edge-triggered, not hold)
+    if (wantJump && !p.jumpHeld) p.jumpBuffer = JUMP_BUFFER;
+    p.jumpHeld = wantJump;
+    p.jumpBuffer = Math.max(0, p.jumpBuffer - dt);
+
     const nearClimb = world.climbables.find((c) => {
       const expanded = { x: c.x - 8, y: c.y, w: c.w + 16, h: c.h };
       return aabb(playerBox(p), expanded);
@@ -543,6 +575,8 @@
       p.climbing = true;
       p.vy = 0;
       p.vx = 0;
+      p.coyote = 0;
+      p.jumpBuffer = 0;
       p.x = nearClimb.x + nearClimb.w / 2 - p.w / 2;
       if (keys.up || keys.space) {
         p.y -= CLIMB_SPEED * dt;
@@ -573,9 +607,12 @@
       p.vx = dir * speed;
       p.animPhase += dt * (2 + Math.abs(p.vx) / 60);
 
-      if (wantJump && p.onGround && !p.crouching) {
+      const canJump = (p.onGround || p.coyote > 0) && !p.crouching;
+      if (canJump && p.jumpBuffer > 0) {
         p.vy = JUMP_V * p.jumpMul;
         p.onGround = false;
+        p.coyote = 0;
+        p.jumpBuffer = 0;
         if (!hints.firstJumpSuccess) {
           hints.firstJumpSuccess = true;
           hideTooltip();
@@ -590,6 +627,7 @@
 
     if (p.x < 40) p.x = 40;
 
+    p.wasOnGround = p.onGround;
     p.onGround = false;
     const solids = world.platforms.concat(
       world.moving.map((m) => ({
@@ -620,6 +658,15 @@
       }
     });
 
+    // Coyote time: brief grace after walking off a ledge
+    if (p.onGround) {
+      p.coyote = COYOTE_TIME;
+    } else if (p.wasOnGround && !p.climbing) {
+      p.coyote = COYOTE_TIME;
+    } else {
+      p.coyote = Math.max(0, p.coyote - dt);
+    }
+
     if (p.invuln <= 0) {
       for (const h of world.hazards) {
         const hitBox = playerBox(p);
@@ -632,7 +679,8 @@
     }
 
     for (const pit of world.pits) {
-      if (p.x + p.w > pit.x + 8 && p.x < pit.x + pit.w - 8 && p.y + p.h > GROUND_Y + 10) {
+      const hit = playerBox(p);
+      if (hit.x + hit.w > pit.x + 8 && hit.x < pit.x + pit.w - 8 && p.y + p.h > GROUND_Y + 10) {
         die("pit");
         return;
       }
@@ -844,17 +892,17 @@
     let armRX = 11;
     let armLY = bodyH - 6;
     let armRY = bodyH - 6;
+    const walkSwing = pose === "walk" ? Math.sin(phase) : 0;
 
     if (pose === "idle") {
       bob = Math.sin(phase * 0.6) * 1.4;
     } else if (pose === "walk") {
-      const swing = Math.sin(phase) * 7;
+      const swing = walkSwing * 7;
       legLX = -5 + swing;
       legRX = 5 - swing;
       armLX = -11 - swing * 0.75;
       armRX = 11 + swing * 0.75;
     } else if (pose === "jump") {
-      // Tucked legs + slight outward arms
       legLX = -2;
       legRX = 2;
       legLY = 3;
@@ -864,7 +912,6 @@
       armLY = bodyH * 0.35;
       armRY = bodyH * 0.35;
     } else if (pose === "climb") {
-      // Reaching arms (alternate height from phase) + mild leg push
       const reach = Math.sin(phase) * 4;
       armLX = -5;
       armRX = 5;
@@ -875,7 +922,6 @@
       legLY = 10;
       legRY = 10;
     } else if (pose === "fail") {
-      // Sprawled limbs under the fail tilt
       legLX = -14;
       legRX = 16;
       legLY = 7;
@@ -889,6 +935,8 @@
     const by = bodyY + bob;
     const hipY = by + bodyH - 2;
     const shoulderY = by + 7;
+    const hemSway = walkSwing * 3.5;
+    const capeFlutter = Math.sin(phase * 1.15 + 0.4) * (pose === "walk" ? 5 : pose === "jump" ? 3 : 2);
 
     // --- Legs (behind torso) ---
     c.strokeStyle = colors.accent;
@@ -901,16 +949,48 @@
     c.lineTo(legRX, hipY + legRY);
     c.stroke();
 
-    // --- Cloak layers (back panel + side drape) ---
-    // Back panel
-    fillRoundRectOn(c, -16, by - 4, 14, bodyH + 8, 6, colors.cloak);
-    // Side drape / fold
-    fillRoundRectOn(c, 4, by + 2, 12, bodyH - 2, 5, colors.cloak);
-    // Soft fold shadow on cloak
-    fillRoundRectOn(c, -14, by + 6, 5, bodyH - 10, 3, "rgba(20,14,30,0.18)");
-
-    // Fox: fluffy collar / short cape edge
-    if (charId === "fox") {
+    // --- Back layers: knight cape / wanderer gown train / fox collar ---
+    if (charId === "knight") {
+      // Fluttering cape (distinct from cloak panels) — sine offset from walk phase
+      c.fillStyle = colors.cloak;
+      c.beginPath();
+      c.moveTo(-6, by + 4);
+      c.quadraticCurveTo(-22 - capeFlutter, by + bodyH * 0.45, -18 - capeFlutter * 0.6, by + bodyH + 10);
+      c.lineTo(-4, by + bodyH - 2);
+      c.quadraticCurveTo(-8, by + 14, -4, by + 6);
+      c.closePath();
+      c.fill();
+      c.fillStyle = "rgba(20,14,30,0.2)";
+      c.beginPath();
+      c.moveTo(-8, by + 10);
+      c.quadraticCurveTo(-16 - capeFlutter * 0.5, by + bodyH * 0.55, -12, by + bodyH + 4);
+      c.lineTo(-6, by + bodyH - 4);
+      c.closePath();
+      c.fill();
+    } else if (charId === "wanderer") {
+      // Flowing gown skirt (drawn behind torso for depth)
+      c.fillStyle = colors.body;
+      c.beginPath();
+      c.moveTo(-10, by + bodyH * 0.35);
+      c.quadraticCurveTo(-18 + hemSway, by + bodyH + 6, -14 + hemSway, hipY + 14);
+      c.lineTo(14 - hemSway * 0.5, hipY + 14);
+      c.quadraticCurveTo(18 - hemSway, by + bodyH + 6, 10, by + bodyH * 0.35);
+      c.closePath();
+      c.fill();
+      // Hem highlight / sway fold
+      c.strokeStyle = colors.trim;
+      c.globalAlpha = 0.55;
+      c.lineWidth = 1.5;
+      c.beginPath();
+      c.moveTo(-12 + hemSway, hipY + 12);
+      c.quadraticCurveTo(0, hipY + 15 + Math.abs(hemSway) * 0.3, 12 - hemSway * 0.5, hipY + 12);
+      c.stroke();
+      c.globalAlpha = 1;
+    } else {
+      // Fox / default: cloak panels
+      fillRoundRectOn(c, -16, by - 4, 14, bodyH + 8, 6, colors.cloak);
+      fillRoundRectOn(c, 4, by + 2, 12, bodyH - 2, 5, colors.cloak);
+      fillRoundRectOn(c, -14, by + 6, 5, bodyH - 10, 3, "rgba(20,14,30,0.18)");
       fillRoundRectOn(c, -14, by - 2, 28, 10, 5, colors.cloak);
       c.fillStyle = colors.trim;
       c.beginPath();
@@ -923,28 +1003,68 @@
     }
 
     // --- Torso ---
-    fillRoundRectOn(c, -12, by, 24, bodyH, 8, colors.body);
-    // Secondary body band (belt / sash) for layering
-    fillRoundRectOn(c, -11, by + bodyH * 0.55, 22, 6, 2, colors.cloak);
-    c.fillStyle = colors.accent;
-    c.globalAlpha = 0.55;
-    c.fillRect(-10, by + bodyH * 0.55 + 2, 20, 2);
-    c.globalAlpha = 1;
-    // Torso highlight (fold / light catch)
-    fillRoundRectOn(c, -9, by + 3, 8, bodyH - 10, 4, "rgba(255,255,255,0.2)");
-
-    // Knight shoulder plate accent
-    if (charId === "knight") {
-      fillRoundRectOn(c, -14, by + 2, 8, 10, 3, colors.accent);
-      fillRoundRectOn(c, 6, by + 2, 8, 10, 3, colors.accent);
-      c.fillStyle = "rgba(255,255,255,0.25)";
-      c.fillRect(-12, by + 3, 5, 1.5);
-      c.fillRect(8, by + 3, 5, 1.5);
+    if (charId === "wanderer") {
+      // Fitted bodice above the wider skirt
+      fillRoundRectOn(c, -11, by, 22, bodyH * 0.55, 7, colors.body);
+      fillRoundRectOn(c, -10, by + 3, 7, bodyH * 0.4, 3, "rgba(255,255,255,0.18)");
+      // Hip satchel
+      c.fillStyle = colors.cloak;
+      c.beginPath();
+      c.ellipse(12, by + bodyH * 0.52, 6.5, 5, 0.2, 0, Math.PI * 2);
+      c.fill();
+      c.fillStyle = colors.accent;
+      c.fillRect(10, by + bodyH * 0.42, 5, 2);
+      c.strokeStyle = colors.trim;
+      c.lineWidth = 1.2;
+      c.beginPath();
+      c.moveTo(6, by + bodyH * 0.38);
+      c.lineTo(12, by + bodyH * 0.48);
+      c.stroke();
+    } else if (charId === "knight") {
+      fillRoundRectOn(c, -12, by, 24, bodyH, 7, colors.body);
+      // Pauldrons
+      fillRoundRectOn(c, -16, by + 1, 10, 12, 4, colors.accent);
+      fillRoundRectOn(c, 6, by + 1, 10, 12, 4, colors.accent);
+      c.fillStyle = "rgba(255,255,255,0.28)";
+      c.fillRect(-14, by + 3, 6, 1.5);
+      c.fillRect(8, by + 3, 6, 1.5);
+      // Chest emblem
+      c.fillStyle = colors.trim;
+      c.beginPath();
+      c.moveTo(0, by + 10);
+      c.lineTo(5, by + 16);
+      c.lineTo(0, by + 22);
+      c.lineTo(-5, by + 16);
+      c.closePath();
+      c.fill();
+      c.fillStyle = colors.accent;
+      c.globalAlpha = 0.45;
+      c.beginPath();
+      c.moveTo(0, by + 12);
+      c.lineTo(3, by + 16);
+      c.lineTo(0, by + 19);
+      c.lineTo(-3, by + 16);
+      c.closePath();
+      c.fill();
+      c.globalAlpha = 1;
+      // Belt + buckle
+      fillRoundRectOn(c, -11, by + bodyH * 0.58, 22, 5, 1.5, colors.accent);
+      fillRoundRectOn(c, -3, by + bodyH * 0.56, 6, 7, 1.5, colors.trim);
+      c.fillStyle = colors.accent;
+      c.fillRect(-1.5, by + bodyH * 0.58, 3, 3);
+    } else {
+      fillRoundRectOn(c, -12, by, 24, bodyH, 8, colors.body);
+      fillRoundRectOn(c, -11, by + bodyH * 0.55, 22, 6, 2, colors.cloak);
+      c.fillStyle = colors.accent;
+      c.globalAlpha = 0.55;
+      c.fillRect(-10, by + bodyH * 0.55 + 2, 20, 2);
+      c.globalAlpha = 1;
+      fillRoundRectOn(c, -9, by + 3, 8, bodyH - 10, 4, "rgba(255,255,255,0.2)");
     }
 
     // --- Arms ---
-    c.strokeStyle = colors.cloak;
-    c.lineWidth = 4.8;
+    c.strokeStyle = charId === "knight" ? colors.accent : colors.cloak;
+    c.lineWidth = charId === "knight" ? 5.2 : 4.8;
     c.lineCap = "round";
     c.beginPath();
     c.moveTo(-10, shoulderY);
@@ -952,7 +1072,6 @@
     c.moveTo(10, shoulderY);
     c.lineTo(armRX, shoulderY + armRY);
     c.stroke();
-    // Hand dots
     c.fillStyle = colors.skin;
     c.beginPath();
     c.arc(armLX, shoulderY + armLY, 2.4, 0, Math.PI * 2);
@@ -966,21 +1085,34 @@
     c.arc(0, headY, 10.5, 0, Math.PI * 2);
     c.fill();
 
-    // Hair / hood base
     if (charId === "wanderer") {
-      // Full hood wraps the head (cloak-colored silhouette)
+      // Refined hair + circlet (not a plain hood)
       c.fillStyle = colors.cloak;
       c.beginPath();
-      c.arc(0, headY - 1, 12.5, Math.PI * 0.15, Math.PI * 0.85, true);
-      c.quadraticCurveTo(-14, headY + 10, -9, headY + 14);
-      c.lineTo(9, headY + 14);
-      c.quadraticCurveTo(14, headY + 10, 12, headY - 1);
+      c.arc(0, headY - 2, 11.5, Math.PI * 1.05, Math.PI * 1.95);
+      c.quadraticCurveTo(12, headY + 6, 8, headY + 12);
+      c.lineTo(5, headY + 4);
+      c.quadraticCurveTo(0, headY + 8, -5, headY + 4);
+      c.lineTo(-8, headY + 12);
+      c.quadraticCurveTo(-12, headY + 6, -11, headY - 2);
       c.closePath();
       c.fill();
-      // Inner hood shadow
-      c.fillStyle = "rgba(20,14,30,0.22)";
+      // Soft side locks
       c.beginPath();
-      c.arc(0, headY + 1, 9, Math.PI * 0.2, Math.PI * 0.8, true);
+      c.moveTo(-10, headY + 2);
+      c.quadraticCurveTo(-14, headY + 10, -9, headY + 16);
+      c.lineTo(-6, headY + 10);
+      c.closePath();
+      c.fill();
+      // Circlet
+      c.strokeStyle = colors.trim;
+      c.lineWidth = 2;
+      c.beginPath();
+      c.arc(0, headY - 4, 10, Math.PI * 1.1, Math.PI * 1.9);
+      c.stroke();
+      c.fillStyle = colors.trim;
+      c.beginPath();
+      c.arc(0, headY - 13, 2.2, 0, Math.PI * 2);
       c.fill();
     } else {
       c.fillStyle = colors.trim;
@@ -996,9 +1128,8 @@
     c.arc(7.5, headY - 1, 1.7, 0, Math.PI * 2);
     c.fill();
 
-    // --- Character-specific silhouette accents ---
+    // --- Character-specific head accents ---
     if (charId === "fox") {
-      // Pointed ears with inner trim
       c.fillStyle = colors.body;
       c.beginPath();
       c.moveTo(-9, headY - 8);
@@ -1025,7 +1156,6 @@
       c.lineTo(10, headY - 10);
       c.closePath();
       c.fill();
-      // Soft muzzle tip
       c.fillStyle = colors.skin;
       c.beginPath();
       c.ellipse(6, headY + 5, 4.5, 3, 0, 0, Math.PI * 2);
@@ -1035,34 +1165,33 @@
       c.arc(8.5, headY + 5, 1.2, 0, Math.PI * 2);
       c.fill();
     } else if (charId === "knight") {
-      // Helm brim + visor band
-      fillRoundRectOn(c, -13, headY - 9, 26, 7, 2, colors.accent);
-      c.fillStyle = "rgba(255,255,255,0.32)";
-      c.fillRect(-11, headY - 8, 22, 1.6);
+      // Full helm with visor slit
+      fillRoundRectOn(c, -12, headY - 12, 24, 18, 5, colors.accent);
+      c.fillStyle = "rgba(255,255,255,0.28)";
+      c.fillRect(-10, headY - 10, 20, 2);
       // Visor slit
-      c.fillStyle = "rgba(20,14,30,0.55)";
-      c.fillRect(-8, headY - 4, 16, 2.2);
-      // Cheek guards
-      fillRoundRectOn(c, -13, headY - 3, 4, 10, 1.5, colors.accent);
-      fillRoundRectOn(c, 9, headY - 3, 4, 10, 1.5, colors.accent);
-    } else if (charId === "wanderer") {
-      // Hanging hood tip / scarf drape (trim accent)
+      c.fillStyle = "rgba(12,10,20,0.72)";
+      fillRoundRectOn(c, -8, headY - 3, 16, 3.5, 1, "rgba(12,10,20,0.72)");
+      // Cheek / neck guards
+      fillRoundRectOn(c, -13, headY - 2, 4, 12, 1.5, colors.accent);
+      fillRoundRectOn(c, 9, headY - 2, 4, 12, 1.5, colors.accent);
+      // Helm crest
       c.fillStyle = colors.trim;
       c.beginPath();
-      c.moveTo(-12, headY - 4);
-      c.quadraticCurveTo(-16, headY + 8, -11, headY + 18);
-      c.lineTo(-6, headY + 12);
-      c.quadraticCurveTo(-10, headY + 6, -9, headY - 2);
+      c.moveTo(-2, headY - 12);
+      c.lineTo(0, headY - 18);
+      c.lineTo(2, headY - 12);
       c.closePath();
       c.fill();
-      // Scarf knot
-      fillRoundRectOn(c, -4, by + 2, 10, 5, 2, colors.trim);
+    } else if (charId === "wanderer") {
+      // Soft scarf at the neckline
+      fillRoundRectOn(c, -5, by + 1, 12, 4, 2, colors.trim);
     }
 
     if (trim || hasGoldenTrim) {
       c.strokeStyle = "#D4AF37";
       c.lineWidth = 2;
-      c.strokeRect(-12, by, 24, bodyH);
+      c.strokeRect(-12, by, 24, bodyH * (charId === "wanderer" ? 0.55 : 1));
     }
     if (crown) {
       c.fillStyle = "#D4AF37";
@@ -1126,16 +1255,58 @@
     // Warm-glow sky accent: soft mushroom/lantern/torch wash, or sunset halo
     ctx.save();
     const isGrand = zoneId === "grand_castle";
-    const haloX = canvas.width * (isGrand ? 0.78 : 0.62);
-    const haloY = isGrand ? 95 : 130;
-    const haloR = isGrand ? 260 : 180;
-    const haloColor = pal.halo || pal.glow;
-    const intensity = isGrand ? 0.62 : 0.28;
+    const isNight = selectedTheme === "night";
+    const haloX = canvas.width * (isGrand ? 0.78 : isNight ? 0.72 : 0.62);
+    const haloY = isGrand ? 95 : isNight ? 78 : 130;
+    const haloR = isGrand ? 260 : isNight ? 140 : 180;
+    const haloColor = isNight ? (pal.halo || "#E8E4F0") : pal.halo || pal.glow;
+    const intensity = isGrand ? 0.62 : isNight ? 0.22 : 0.28;
     const rg = ctx.createRadialGradient(haloX, haloY, 8, haloX, haloY, haloR);
     rg.addColorStop(0, hexToRgba(haloColor, intensity));
     rg.addColorStop(1, hexToRgba(haloColor, 0));
     ctx.fillStyle = rg;
     ctx.fillRect(0, 0, canvas.width, GROUND_Y);
+
+    if (isNight) {
+      // Moon
+      ctx.fillStyle = "rgba(235, 232, 245, 0.92)";
+      ctx.beginPath();
+      ctx.arc(haloX, haloY, 22, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = pal.skyTop;
+      ctx.beginPath();
+      ctx.arc(haloX + 8, haloY - 4, 18, 0, Math.PI * 2);
+      ctx.fill();
+      // Stars — hashed so they stay stable while scrolling
+      for (let i = 0; i < 42; i++) {
+        const sx = hash01(i * 17 + 3) * canvas.width;
+        const sy = hash01(i * 29 + 5) * (GROUND_Y * 0.72);
+        const twinkle = 0.35 + 0.45 * (0.5 + 0.5 * Math.sin(elapsedRun * 1.4 + i));
+        ctx.fillStyle = `rgba(230, 235, 255, ${twinkle})`;
+        ctx.fillRect(sx, sy, 1.6 + hash01(i) * 1.2, 1.6 + hash01(i + 1) * 1.2);
+      }
+    } else {
+      // Soft sun disc + drifting cloud puffs
+      ctx.fillStyle = hexToRgba(pal.glow || "#F4C95D", 0.55);
+      ctx.beginPath();
+      ctx.arc(haloX, haloY, 18, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = hexToRgba(pal.halo || "#F9DFAE", 0.85);
+      ctx.beginPath();
+      ctx.arc(haloX, haloY, 10, 0, Math.PI * 2);
+      ctx.fill();
+      for (let i = 0; i < 5; i++) {
+        const cx = ((hash01(i * 11) * canvas.width * 1.4 + elapsedRun * (4 + i)) % (canvas.width + 120)) - 60;
+        const cy = 40 + hash01(i * 7 + 2) * 70;
+        const cw = 28 + hash01(i * 3) * 22;
+        ctx.fillStyle = "rgba(255, 250, 240, 0.22)";
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, cw, cw * 0.45, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx - cw * 0.45, cy + 4, cw * 0.55, cw * 0.35, 0, 0, Math.PI * 2);
+        ctx.ellipse(cx + cw * 0.4, cy + 2, cw * 0.5, cw * 0.32, 0, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
     ctx.restore();
   }
 
@@ -1382,6 +1553,178 @@
     }
   }
 
+  /**
+   * Decorative secondary parallax (between mid & near) — fences, carts, hay,
+   * sign posts. Non-colliding, purely visual; densest in the Village.
+   */
+  function drawDecorLayer(pal, zoneId, parX) {
+    const TILE = 120;
+    const startTile = Math.floor((parX - 90) / TILE) - 1;
+    const endTile = Math.floor((parX + canvas.width + 90) / TILE) + 1;
+    const density = zoneId === "village" ? 0.28 : zoneId === "forest" ? 0.55 : 0.62;
+
+    for (let i = startTile; i <= endTile; i++) {
+      if (hash01(i * 41 + 9) < density) continue;
+
+      const wx = i * TILE + hash01(i * 37) * 40;
+      const sx = wx - parX;
+      const s = 0.75 + hash01(i * 43) * 0.4;
+      const kind = hash01(i * 47);
+
+      if (zoneId === "village") {
+        if (kind < 0.28) {
+          // Low fence stretch
+          ctx.fillStyle = pal.wood;
+          ctx.fillRect(sx - 22 * s, GROUND_Y - 6, 44 * s, 3);
+          for (let p = -18; p <= 18; p += 12) {
+            ctx.fillRect(sx + p * s, GROUND_Y - 18 * s, 3, 18 * s);
+          }
+        } else if (kind < 0.5) {
+          // Cart
+          ctx.fillStyle = pal.near;
+          ctx.fillRect(sx - 16 * s, GROUND_Y - 16 * s, 32 * s, 12 * s);
+          ctx.fillStyle = pal.wood;
+          ctx.fillRect(sx - 18 * s, GROUND_Y - 18 * s, 36 * s, 3);
+          ctx.beginPath();
+          ctx.arc(sx - 10 * s, GROUND_Y - 2, 5 * s, 0, Math.PI * 2);
+          ctx.arc(sx + 12 * s, GROUND_Y - 2, 5 * s, 0, Math.PI * 2);
+          ctx.fillStyle = pal.far;
+          ctx.fill();
+        } else if (kind < 0.72) {
+          // Hay bale
+          ctx.fillStyle = pal.glow;
+          ctx.beginPath();
+          ctx.ellipse(sx, GROUND_Y - 10 * s, 14 * s, 10 * s, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.strokeStyle = "rgba(80,50,20,0.35)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.ellipse(sx, GROUND_Y - 10 * s, 14 * s, 10 * s, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        } else {
+          // Sign post
+          ctx.fillStyle = pal.near;
+          ctx.fillRect(sx - 1.5, GROUND_Y - 34 * s, 3, 34 * s);
+          ctx.fillStyle = pal.wall;
+          ctx.fillRect(sx - 12 * s, GROUND_Y - 42 * s, 24 * s, 14 * s);
+          ctx.strokeStyle = "rgba(20,14,30,0.3)";
+          ctx.strokeRect(sx - 12 * s, GROUND_Y - 42 * s, 24 * s, 14 * s);
+        }
+      } else if (zoneId === "forest") {
+        // Occasional stump / mushroom ring accent
+        ctx.fillStyle = pal.mid;
+        ctx.beginPath();
+        ctx.ellipse(sx, GROUND_Y - 4, 10 * s, 5 * s, 0, 0, Math.PI * 2);
+        ctx.fill();
+        if (kind > 0.6) {
+          ctx.fillStyle = hexToRgba(pal.glow, 0.5);
+          ctx.beginPath();
+          ctx.arc(sx + 6 * s, GROUND_Y - 10 * s, 4 * s, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      } else {
+        // Sparse stone markers / rubble
+        ctx.fillStyle = pal.near;
+        ctx.fillRect(sx - 6 * s, GROUND_Y - 10 * s, 12 * s, 10 * s);
+      }
+    }
+  }
+
+  /**
+   * Birds (morning) / bats + fireflies (night) — deterministic like particles.
+   * Drawn above far/mid, behind player & obstacles.
+   */
+  function drawCreatures(zoneId, t) {
+    const TILE = 300;
+    const pad = 220;
+    const startTile = Math.floor((cameraX - pad) / TILE) - 1;
+    const endTile = Math.floor((cameraX + canvas.width + pad) / TILE) + 1;
+    const isNight = selectedTheme === "night";
+    const pal = zonePalette(zoneId);
+
+    const edgeFade = (sx) => {
+      const m = 80;
+      if (sx < -m || sx > canvas.width + m) return 0;
+      if (sx < m) return sx / m;
+      if (sx > canvas.width - m) return (canvas.width - sx) / m;
+      return 1;
+    };
+
+    for (let i = startTile; i <= endTile; i++) {
+      if (hash01(i * 53 + 11) < 0.42) continue;
+
+      const baseX = i * TILE + hash01(i * 59) * TILE * 0.7;
+      const fade = edgeFade(baseX - cameraX);
+      if (fade <= 0.01) continue;
+
+      if (isNight) {
+        // Bat flock — jagged wings, faster flutter
+        if (hash01(i * 61) > 0.35) {
+          const flock = 2 + Math.floor(hash01(i * 67) * 3);
+          const par = cameraX * 0.48;
+          for (let b = 0; b < flock; b++) {
+            const bx = baseX - par + b * 16 + Math.sin(t * 1.8 + i + b) * 10;
+            const by = 70 + hash01(i * 71 + b) * 90 + Math.sin(t * 3.2 + b) * 8;
+            const flap = Math.sin(t * 14 + b * 2.1 + i) * 5;
+            const sx = bx;
+            const fadeB = edgeFade(sx);
+            if (fadeB <= 0.01) continue;
+            ctx.globalAlpha = 0.7 * fadeB;
+            ctx.fillStyle = "#1a1624";
+            ctx.beginPath();
+            ctx.moveTo(sx - 7, by - flap);
+            ctx.lineTo(sx - 2, by);
+            ctx.lineTo(sx, by + 2);
+            ctx.lineTo(sx + 2, by);
+            ctx.lineTo(sx + 7, by - flap * 0.9);
+            ctx.lineTo(sx + 3, by + 1);
+            ctx.lineTo(sx - 3, by + 1);
+            ctx.closePath();
+            ctx.fill();
+          }
+        }
+        // Forest fireflies near the ground (night + forest especially)
+        if (zoneId === "forest" || hash01(i * 73) > 0.55) {
+          for (let f = 0; f < 3; f++) {
+            if (hash01(i * 79 + f) < 0.4) continue;
+            const fx = baseX - cameraX + hash01(i * 83 + f) * 80 + Math.sin(t * 0.9 + f) * 12;
+            const fy = GROUND_Y - 18 - hash01(i * 89 + f) * 50 + Math.cos(t * 1.3 + f) * 6;
+            const pulse = 0.25 + 0.55 * (0.5 + 0.5 * Math.sin(t * 4 + f * 2 + i));
+            ctx.globalAlpha = pulse * fade;
+            ctx.fillStyle = pal.glow;
+            ctx.beginPath();
+            ctx.arc(fx, fy, 1.8, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = hexToRgba(pal.glow, 0.35);
+            ctx.beginPath();
+            ctx.arc(fx, fy, 4.5, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+        ctx.globalAlpha = 1;
+      } else {
+        // Morning: V-wing bird flock on slow parallax
+        const flock = 3 + Math.floor(hash01(i * 91) * 3);
+        const drift = t * (12 + hash01(i) * 8);
+        for (let b = 0; b < flock; b++) {
+          const bx = ((baseX - cameraX * PARALLAX.far + drift + b * 18) % (canvas.width + 160)) - 40;
+          const by = 50 + hash01(i * 97 + b) * 70 + Math.sin(t * 0.6 + b) * 4;
+          const flap = Math.sin(t * 3.5 + b * 1.4 + i) > 0 ? 4 : 1.5;
+          ctx.globalAlpha = 0.55 * fade;
+          ctx.strokeStyle = "rgba(40, 36, 50, 0.75)";
+          ctx.lineWidth = 1.6;
+          ctx.lineCap = "round";
+          ctx.beginPath();
+          ctx.moveTo(bx - 8, by - flap);
+          ctx.lineTo(bx, by);
+          ctx.lineTo(bx + 8, by - flap * 0.9);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+
   /* ======================================================================== */
   /* Ambient particles — fairies / smoke / embers, deterministic per tile so  */
   /* they never pop in/out abruptly.                                          */
@@ -1571,6 +1914,108 @@
       ctx.moveTo(left + w - 24, GROUND_Y - h + 16);
       ctx.lineTo(left + w - 10, GROUND_Y - h + 16);
       ctx.stroke();
+    } else if (s.type === "market_stall") {
+      const w = 64 * s.scale;
+      const h = 36 * s.scale;
+      const pal = zonePalette("village");
+      const left = sx - w / 2;
+      // Counter
+      drawObstacleShape(left, GROUND_Y - h * 0.45, w, h * 0.45, 3, pal.wood, hexToRgba(pal.wall, 0.4));
+      // Posts
+      ctx.fillStyle = pal.near;
+      ctx.fillRect(left + 4, GROUND_Y - h - 4, 4, h + 4);
+      ctx.fillRect(left + w - 8, GROUND_Y - h - 4, 4, h + 4);
+      // Striped awning
+      ctx.beginPath();
+      ctx.moveTo(left - 6, GROUND_Y - h);
+      ctx.lineTo(sx, GROUND_Y - h - 14 * s.scale);
+      ctx.lineTo(left + w + 6, GROUND_Y - h);
+      ctx.closePath();
+      ctx.fillStyle = pal.glow;
+      ctx.fill();
+      ctx.fillStyle = pal.near;
+      for (let i = 0; i < 5; i++) {
+        const t0 = i / 5;
+        const t1 = (i + 0.5) / 5;
+        const x0 = left - 6 + (w + 12) * t0;
+        const x1 = left - 6 + (w + 12) * t1;
+        ctx.beginPath();
+        ctx.moveTo(x0, GROUND_Y - h);
+        ctx.lineTo(sx, GROUND_Y - h - 14 * s.scale);
+        ctx.lineTo(x1, GROUND_Y - h);
+        ctx.closePath();
+        ctx.fill();
+      }
+      // Goods on counter
+      ctx.fillStyle = "#6B9E6F";
+      ctx.beginPath();
+      ctx.arc(sx - 12 * s.scale, GROUND_Y - h * 0.55, 5 * s.scale, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = "#D99B9E";
+      ctx.fillRect(sx + 4 * s.scale, GROUND_Y - h * 0.62, 10 * s.scale, 8 * s.scale);
+      ctx.fillStyle = pal.glow;
+      ctx.beginPath();
+      ctx.ellipse(sx + 18 * s.scale, GROUND_Y - h * 0.52, 6 * s.scale, 4 * s.scale, 0, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (s.type === "forge") {
+      const w = 54 * s.scale;
+      const h = 48 * s.scale;
+      const pal = zonePalette("village");
+      const left = sx - w / 2;
+      drawObstacleShape(left, GROUND_Y - h, w, h, 4, "#5a4a46", "rgba(255,200,160,0.2)");
+      // Chimney
+      ctx.fillStyle = "#3a3230";
+      ctx.fillRect(sx + w * 0.15, GROUND_Y - h - 28 * s.scale, 12 * s.scale, 30 * s.scale);
+      // Forge glow opening
+      const flicker = 0.7 + 0.3 * Math.sin(elapsedRun * 8 + s.seed);
+      const glow = ctx.createRadialGradient(sx, GROUND_Y - 18, 0, sx, GROUND_Y - 18, 22 * s.scale);
+      glow.addColorStop(0, hexToRgba(pal.glow, 0.85 * flicker));
+      glow.addColorStop(1, hexToRgba(pal.glow, 0));
+      ctx.fillStyle = glow;
+      ctx.beginPath();
+      ctx.arc(sx, GROUND_Y - 16, 20 * s.scale, 0, Math.PI * 2);
+      ctx.fill();
+      drawObstacleShape(sx - 10 * s.scale, GROUND_Y - 22 * s.scale, 20 * s.scale, 16 * s.scale, 3, "#2a2018", hexToRgba(pal.glow, 0.5));
+      // Anvil silhouette
+      ctx.fillStyle = "#2E2748";
+      ctx.fillRect(sx - 22 * s.scale, GROUND_Y - 14, 14 * s.scale, 8);
+      ctx.fillRect(sx - 18 * s.scale, GROUND_Y - 20, 8 * s.scale, 6);
+      // Smoke puff
+      ctx.fillStyle = `rgba(200,200,210,${0.2 + 0.1 * Math.sin(elapsedRun * 2 + s.seed)})`;
+      ctx.beginPath();
+      ctx.arc(sx + w * 0.22, GROUND_Y - h - 34 * s.scale - Math.sin(elapsedRun * 1.5) * 4, 6 * s.scale, 0, Math.PI * 2);
+      ctx.fill();
+    } else if (s.type === "townhouse") {
+      const w = 52 * s.scale;
+      const h = 78 * s.scale;
+      const pal = zonePalette("village");
+      const left = sx - w / 2;
+      // Two-story body
+      drawObstacleShape(left, GROUND_Y - h, w, h, 4, pal.wall, "rgba(255,255,255,0.25)");
+      // Floor line
+      ctx.strokeStyle = "rgba(20,14,30,0.2)";
+      ctx.beginPath();
+      ctx.moveTo(left + 2, GROUND_Y - h * 0.48);
+      ctx.lineTo(left + w - 2, GROUND_Y - h * 0.48);
+      ctx.stroke();
+      // Different roofline — stepped / saltbox peak offset
+      const peak = GROUND_Y - h - 22 * s.scale;
+      ctx.beginPath();
+      ctx.moveTo(left - 6, GROUND_Y - h);
+      ctx.lineTo(left + w * 0.35, peak);
+      ctx.lineTo(left + w * 0.55, GROUND_Y - h - 10 * s.scale);
+      ctx.lineTo(left + w + 6, GROUND_Y - h);
+      ctx.closePath();
+      ctx.fillStyle = "#7A4A3A";
+      ctx.fill();
+      ctx.strokeStyle = "rgba(20,14,30,0.4)";
+      ctx.lineWidth = 1.5;
+      ctx.stroke();
+      // Upper + lower windows
+      drawObstacleShape(left + 8, GROUND_Y - h + 10, 12, 12, 2, pal.glow, "rgba(255,255,220,0.45)");
+      drawObstacleShape(left + w - 22, GROUND_Y - h + 10, 12, 12, 2, pal.glow, "rgba(255,255,220,0.45)");
+      drawObstacleShape(left + w - 22, GROUND_Y - h * 0.4, 12, 14, 2, pal.glow, "rgba(255,255,220,0.4)");
+      drawObstacleShape(sx - 8, GROUND_Y - 26, 16, 26, 3, "#3f2a22", "rgba(255,220,180,0.12)");
     } else if (s.type === "castle") {
       const w = 74 * s.scale;
       const h = 74 * s.scale;
@@ -2016,10 +2461,12 @@
     const zone = zoneAt(player ? player.x : 0);
     const pal = zonePalette(zone.id);
 
-    // Procedural parallax (far → mid → near) before playable world
+    // Procedural parallax (far → mid → decor → near) before playable world
     drawSky(pal, zone.id);
     drawFarLayer(pal, zone.id, cameraX * PARALLAX.far);
     drawMidLayer(pal, zone.id, cameraX * PARALLAX.mid);
+    drawCreatures(zone.id, elapsedRun);
+    drawDecorLayer(pal, zone.id, cameraX * PARALLAX.decor);
     drawNearLayer(pal, zone.id, cameraX * PARALLAX.near);
     drawGroundWash(pal);
     drawParticles(zone.id, elapsedRun);
@@ -2218,8 +2665,14 @@
     closeOverlays();
     showScreen("menu");
     selectedChar = null;
+    selectedTheme = "morning";
     btnPlay.disabled = true;
     document.querySelectorAll(".char-card").forEach((c) => c.classList.remove("is-selected"));
+    document.querySelectorAll(".theme-card").forEach((c) => {
+      const on = c.dataset.theme === "morning";
+      c.classList.toggle("is-selected", on);
+      c.setAttribute("aria-checked", on ? "true" : "false");
+    });
   }
 
   /* ======================================================================== */
@@ -2331,8 +2784,22 @@
     });
   });
 
+  document.querySelectorAll(".theme-card").forEach((card) => {
+    card.addEventListener("click", () => {
+      document.querySelectorAll(".theme-card").forEach((c) => {
+        c.classList.remove("is-selected");
+        c.setAttribute("aria-checked", "false");
+      });
+      card.classList.add("is-selected");
+      card.setAttribute("aria-checked", "true");
+      selectedTheme = card.dataset.theme === "night" ? "night" : "morning";
+    });
+  });
+
   btnPlay.addEventListener("click", () => {
     if (!selectedChar) return;
+    const themeBtn = document.querySelector(".theme-card.is-selected");
+    if (themeBtn) selectedTheme = themeBtn.dataset.theme === "night" ? "night" : "morning";
     startRun();
   });
 
