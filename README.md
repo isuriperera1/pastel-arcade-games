@@ -45,7 +45,8 @@ All asset paths are relative to the repo root so root-based Pages hosting works 
     │   └── script.js
     ├── memory-match/
     ├── tic-tac-toe/
-    └── whack-a-mole/          # UI title: "Peek-a-Boo"
+    ├── whack-a-mole/          # UI title: "Peek-a-Boo"
+    └── crownward/             # Side-scroller path to the Grand Castle
 ```
 
 ## Design system (`styles/theme.css`)
@@ -124,6 +125,7 @@ Refresh the hub — your card should appear. Existing games stay untouched.
 | **Memory Match** | `games/memory-match` | 4×4 / 6×6, moves + timer |
 | **Tic-Tac-Toe** | `games/tic-tac-toe` | 2-player or vs AI, round scores saved |
 | **Peek-a-Boo** | `games/whack-a-mole` | Timed tap game, difficulty ramps, high score saved |
+| **Crownward** | `games/crownward` | Side-scroller to the Grand Castle; 30:00 timer, checkpoints, analytics in localStorage |
 
 ## Architecture notes
 

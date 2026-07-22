@@ -1,0 +1,213 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Crownward · Aracage Games</title>
+    <link rel="stylesheet" href="../../styles/theme.css" />
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <div class="page">
+      <div id="site-nav" data-base="../.."></div>
+
+      <main class="page-main page-main--game crownward-main">
+        <div class="game-shell crownward-shell">
+          <!-- MENU -->
+          <section id="screen-menu" class="cw-screen card" data-screen="MENU">
+            <h1 class="cw-title">Crownward</h1>
+            <p class="lede text-center">
+              Heading toward the crown — walk the path from humble houses to the
+              Grand Castle before the sun sets.
+            </p>
+            <p class="cw-howto muted text-center">
+              Use ← → to move, ↑ to jump or climb, ↓ to duck. Reach the Grand
+              Castle before time runs out!
+            </p>
+            <div class="btn-group">
+              <button type="button" class="btn btn--primary" id="btn-start">
+                Begin Journey
+              </button>
+            </div>
+          </section>
+
+          <!-- CHARACTER SELECT -->
+          <section
+            id="screen-select"
+            class="cw-screen card hidden"
+            data-screen="CHARACTER_SELECT"
+            aria-hidden="true"
+          >
+            <h2 class="text-center">Choose your traveler</h2>
+            <p class="muted text-center">
+              Cosmetics &amp; light flavor — all three can reach the castle.
+            </p>
+            <div class="char-grid" role="list">
+              <button
+                type="button"
+                class="char-card"
+                data-char="knight"
+                role="listitem"
+              >
+                <canvas class="char-preview" width="96" height="112" data-preview="knight"></canvas>
+                <strong>Knight</strong>
+                <span>Steady pace · solid jump</span>
+              </button>
+              <button
+                type="button"
+                class="char-card"
+                data-char="wanderer"
+                role="listitem"
+              >
+                <canvas class="char-preview" width="96" height="112" data-preview="wanderer"></canvas>
+                <strong>Wanderer</strong>
+                <span>Faster walk · shorter jump</span>
+              </button>
+              <button
+                type="button"
+                class="char-card"
+                data-char="fox"
+                role="listitem"
+              >
+                <canvas class="char-preview" width="96" height="112" data-preview="fox"></canvas>
+                <strong>Fox Cub</strong>
+                <span>Quick stride · higher jump</span>
+              </button>
+            </div>
+            <div class="btn-group">
+              <button type="button" class="btn btn--ghost" id="btn-back-menu">
+                Back
+              </button>
+              <button type="button" class="btn btn--primary" id="btn-play" disabled>
+                Set Out
+              </button>
+            </div>
+          </section>
+
+          <!-- PLAYING / PAUSED / WIN / TIMEOUT share the stage -->
+          <section
+            id="screen-play"
+            class="cw-play hidden"
+            data-screen="PLAYING"
+            aria-hidden="true"
+          >
+            <div class="cw-hud">
+              <div class="cw-minimap" id="minimap" aria-label="Path progress">
+                <div class="cw-minimap__track">
+                  <span class="cw-minimap__icon cw-minimap__icon--forest" title="Enchanted Forest"></span>
+                  <span class="cw-minimap__icon cw-minimap__icon--village" title="Village"></span>
+                  <span class="cw-minimap__icon cw-minimap__icon--outer" title="Castle"></span>
+                  <span class="cw-minimap__icon cw-minimap__icon--grand" title="Grand Castle"></span>
+                  <span class="cw-minimap__dot" id="minimap-dot"></span>
+                </div>
+                <span class="cw-minimap__label" id="zone-label">Enchanted Forest</span>
+              </div>
+              <div class="stat-row cw-hud__stats">
+                <div class="stat">
+                  <span class="stat__label">Time</span>
+                  <span class="stat__value" id="hud-timer">30:00</span>
+                </div>
+                <div class="stat">
+                  <span class="stat__label">Retries</span>
+                  <span class="stat__value" id="hud-retries">0</span>
+                </div>
+              </div>
+              <button type="button" class="btn btn--ghost btn--sm" id="btn-pause">
+                Pause
+              </button>
+            </div>
+
+            <div class="cw-canvas-wrap board-wrap">
+              <canvas id="game-canvas" width="960" height="480" aria-label="Crownward game"></canvas>
+              <div class="cw-tooltip hidden" id="tooltip" role="status"></div>
+              <div class="cw-controls-hint" id="controls-hint" aria-hidden="false">
+                <span class="cw-key">←</span>
+                <span class="cw-key">→</span>
+                <span class="cw-key">↑</span>
+                <span class="cw-key">↓</span>
+              </div>
+            </div>
+
+            <!-- Fail overlay -->
+            <div class="modal-backdrop" id="fail-overlay" aria-hidden="true">
+              <div class="modal-card" role="dialog" aria-labelledby="fail-title">
+                <h2 id="fail-title">You stumbled!</h2>
+                <p id="fail-msg">The path is unforgiving… try again from your last checkpoint.</p>
+                <div class="btn-group">
+                  <button type="button" class="btn btn--primary" id="btn-fail-restart">
+                    Start Over
+                  </button>
+                  <button
+                    type="button"
+                    class="btn btn--diamond"
+                    id="btn-fail-diamond"
+                    disabled
+                    title="Coming soon!"
+                    aria-disabled="true"
+                  >
+                    Get a Diamond
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Pause overlay -->
+            <div class="modal-backdrop" id="pause-overlay" aria-hidden="true">
+              <div class="modal-card" role="dialog" aria-labelledby="pause-title">
+                <h2 id="pause-title">Paused</h2>
+                <p>The path waits. Timer is frozen.</p>
+                <div class="btn-group">
+                  <button type="button" class="btn btn--primary" id="btn-resume">
+                    Resume
+                  </button>
+                  <button type="button" class="btn btn--ghost" id="btn-quit">
+                    Quit to Menu
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Win overlay -->
+            <div class="modal-backdrop" id="win-overlay" aria-hidden="true">
+              <div class="modal-card cw-end-card" role="dialog" aria-labelledby="win-title">
+                <div class="cw-confetti" id="confetti" aria-hidden="true"></div>
+                <h2 id="win-title">The Crown Awaits</h2>
+                <p id="win-msg">The King and Queen welcome you!</p>
+                <ul class="cw-stats-list" id="win-stats"></ul>
+                <div class="btn-group">
+                  <button type="button" class="btn btn--primary" id="btn-win-again">
+                    Play Again
+                  </button>
+                  <button type="button" class="btn btn--ghost" id="btn-win-menu">
+                    Menu
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Timeout overlay -->
+            <div class="modal-backdrop" id="timeout-overlay" aria-hidden="true">
+              <div class="modal-card" role="dialog" aria-labelledby="timeout-title">
+                <h2 id="timeout-title">Sunset</h2>
+                <p>
+                  The sun set before you arrived — try again faster!
+                </p>
+                <div class="btn-group">
+                  <button type="button" class="btn btn--primary" id="btn-timeout-again">
+                    Try Again
+                  </button>
+                  <button type="button" class="btn btn--ghost" id="btn-timeout-menu">
+                    Menu
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+      </main>
+    </div>
+
+    <script src="../../js/shell.js"></script>
+    <script src="script.js"></script>
+  </body>
+</html>

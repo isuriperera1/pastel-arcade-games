@@ -107,6 +107,22 @@ const GAMES_REGISTRY = [
       </svg>
     `,
   },
+  {
+    id: "crownward",
+    name: "Crownward",
+    description: "Walk, jump, and climb from village to the Grand Castle.",
+    path: "games/crownward/index.html",
+    iconSvg: `
+      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#B9A9D6"/>
+        <rect x="8" y="38" width="14" height="16" rx="2" fill="#E8B4B8"/>
+        <rect x="26" y="28" width="16" height="26" rx="2" fill="#7FC7C4"/>
+        <rect x="40" y="18" width="16" height="36" rx="2" fill="#3A3159"/>
+        <path d="M42 18 L46 10 L50 18 L54 10 L56 18" fill="#F5EFE3"/>
+        <circle cx="48" cy="12" r="2.5" fill="#E8B4B8"/>
+      </svg>
+    `,
+  },
 ];
 
 /* Expose for non-module script tags */
