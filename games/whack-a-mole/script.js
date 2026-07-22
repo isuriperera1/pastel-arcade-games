@@ -3,7 +3,7 @@
  * High score in localStorage; spawn rate speeds up as time runs out.
  */
 (function () {
-  const BEST_KEY = "aracage-games-peek-best";
+  const BEST_KEY = "arcade-games-peek-best";
   const DURATION = 30;
   const HOLES = 9;
 

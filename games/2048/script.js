@@ -11,7 +11,7 @@
  */
 (function () {
   const SIZE = 4;
-  const BEST_KEY = "aracage-games-2048-best";
+  const BEST_KEY = "arcade-games-2048-best";
   const SLIDE_MS = 130; // must stay in sync with the .tile transition duration in style.css
 
   const boardEl = document.getElementById("board");

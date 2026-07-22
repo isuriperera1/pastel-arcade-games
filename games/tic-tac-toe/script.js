@@ -3,7 +3,7 @@
  * Round scores (X / O / draws) persist in localStorage.
  */
 (function () {
-  const SCORE_KEY = "aracage-games-ttt-scores";
+  const SCORE_KEY = "arcade-games-ttt-scores";
   const WINS = [
     [0, 1, 2],
     [3, 4, 5],

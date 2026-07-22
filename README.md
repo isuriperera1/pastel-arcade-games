@@ -1,4 +1,4 @@
-# Aracage Games
+# Arcade Games
 
 A static multi-game arcade hub meant for **GitHub Pages**. Plain HTML, CSS, and vanilla JavaScript — no build step, no frameworks, no backend.
 
@@ -111,7 +111,7 @@ The hub reads this array and builds the card grid automatically.
 
 ### 4. Persist scores (optional)
 
-Use `localStorage` with a namespaced key, e.g. `aracage-games-<id>-best`. Never add a backend.
+Use `localStorage` with a namespaced key, e.g. `arcade-games-<id>-best`. Never add a backend.
 
 ### 5. Done
 

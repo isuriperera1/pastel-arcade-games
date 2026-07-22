@@ -32,9 +32,9 @@
   mount.innerHTML = `
     <header class="topbar" role="banner">
       <div class="topbar__inner">
-        <a class="brand" href="${homeHref}" aria-label="Aracage Games home">
+        <a class="brand" href="${homeHref}" aria-label="Arcade Games home">
           <span class="brand__mark">${markSvg}</span>
-          <span>Aracage Games</span>
+          <span>Arcade Games</span>
         </a>
         <div class="topbar__actions">
           ${backLink}
