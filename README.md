@@ -126,7 +126,7 @@ Refresh the hub — your card should appear. Existing games stay untouched.
 | Game | Folder | Notes |
 |------|--------|--------|
 | **2048** | `games/2048` | Arrows + swipe, best score saved |
-| **Flow** | `games/flow` | Rotate pipes to connect source → target; levels 1–3, stars in localStorage |
+| **Flow** | `games/flow` | Rotate pipes to connect source → target; 10 levels (multi-color, locked, oneway, limited rotations, Level 10 soft time attack); stars in localStorage |
 | **Tic-Tac-Toe** | `games/tic-tac-toe` | 2-player or vs AI, round scores saved |
 | **Peek-a-Boo** | `games/whack-a-mole` | Timed tap game, difficulty ramps, high score saved |
 | **Crownward** | `games/crownward` | Side-scroller to the Grand Castle; 30:00 timer, checkpoints, analytics in localStorage |

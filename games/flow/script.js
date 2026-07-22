@@ -1,16 +1,20 @@
 /**
  * Flow — rotate pipes to connect source light(s) to matching target(s).
- * Levels 1–7 playable; 8–10 locked (Part 3).
+ * Levels 1–10 playable (Parts 1–3).
  *
  * Oneway tiles: two ports like straight (opposite) or curve (adjacent).
  * flowDirection "A-to-B" means flow may enter from A and leave via B only.
  * Base at rotation 0 is always N-to-S (straight-like) or N-to-E (curve-like);
  * rotating the tile rotates connections and flowDirection together.
+ *
+ * Limited rotations: optional maxRotations; each click increments
+ * rotationsUsed and locks the tile when the budget is spent.
  */
 (function () {
   const TOTAL_LEVELS = 10;
-  const UNLOCKED_THROUGH = 7;
+  const UNLOCKED_THROUGH = 10;
   const STARS_KEY = (n) => `arcade-games-flow-level-${n}-stars`;
+  const FLOW_KEY_PREFIX = "arcade-games-flow-";
 
   const DIR = { N: 0, E: 1, S: 2, W: 3 };
   const DIR_NAMES = ["N", "E", "S", "W"];
@@ -287,18 +291,24 @@
   const selectScreen = document.getElementById("select-screen");
   const playScreen = document.getElementById("play-screen");
   const levelGridEl = document.getElementById("level-grid");
+  const levelMapTrail = document.getElementById("level-map-trail");
   const flowGridEl = document.getElementById("flow-grid");
   const hudLevel = document.getElementById("hud-level");
   const hudMoves = document.getElementById("hud-moves");
   const hudPar = document.getElementById("hud-par");
+  const hudTimerStat = document.getElementById("hud-timer-stat");
+  const hudTimer = document.getElementById("hud-timer");
   const levelNameEl = document.getElementById("level-name");
   const completeModal = document.getElementById("complete-modal");
+  const completeCard = document.getElementById("complete-card");
   const completeMsg = document.getElementById("complete-msg");
   const completeStars = document.getElementById("complete-stars");
+  const perfectBadge = document.getElementById("perfect-badge");
   const btnNext = document.getElementById("btn-next");
   const btnReplay = document.getElementById("btn-replay");
   const btnReplayModal = document.getElementById("btn-replay-modal");
   const btnLevels = document.getElementById("btn-levels");
+  const btnResetProgress = document.getElementById("btn-reset-progress");
 
   /** @type {ReturnType<typeof buildGrid>|null} */
   let grid = null;
@@ -307,6 +317,11 @@
   let solved = false;
   /** @type {Map<string, HTMLElement>} */
   const tileEls = new Map();
+
+  /** Soft timer (Level 10) */
+  let timerInterval = null;
+  let levelStartMs = 0;
+  let elapsedSec = 0;
 
   /* -------------------------------------------------------------------- */
   /* Stars / storage                                                      */
@@ -322,6 +337,15 @@
     if (stars > prev) {
       localStorage.setItem(STARS_KEY(levelId), String(stars));
     }
+  }
+
+  function clearAllFlowProgress() {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(FLOW_KEY_PREFIX)) keys.push(k);
+    }
+    keys.forEach((k) => localStorage.removeItem(k));
   }
 
   function starsForMoves(moves, par) {
@@ -341,12 +365,89 @@
   }
 
   /* -------------------------------------------------------------------- */
+  /* Soft timer                                                           */
+  /* -------------------------------------------------------------------- */
+
+  function formatTime(sec) {
+    const s = Math.max(0, Math.floor(sec));
+    const m = Math.floor(s / 60);
+    const r = s % 60;
+    return `${String(m).padStart(2, "0")}:${String(r).padStart(2, "0")}`;
+  }
+
+  function stopTimer() {
+    if (timerInterval) {
+      clearInterval(timerInterval);
+      timerInterval = null;
+    }
+  }
+
+  function updateTimerDisplay() {
+    if (hudTimer) hudTimer.textContent = formatTime(elapsedSec);
+  }
+
+  function startTimer() {
+    stopTimer();
+    levelStartMs = Date.now();
+    elapsedSec = 0;
+    updateTimerDisplay();
+    timerInterval = window.setInterval(() => {
+      elapsedSec = Math.floor((Date.now() - levelStartMs) / 1000);
+      updateTimerDisplay();
+    }, 250);
+  }
+
+  function syncTimerHud(levelDef) {
+    const show = !!(levelDef && levelDef.perfectTime != null);
+    if (hudTimerStat) {
+      hudTimerStat.classList.toggle("is-hidden", !show);
+      hudTimerStat.setAttribute("aria-hidden", show ? "false" : "true");
+    }
+    if (show) startTimer();
+    else stopTimer();
+  }
+
+  /* -------------------------------------------------------------------- */
   /* Level select                                                         */
   /* -------------------------------------------------------------------- */
 
+  /** Snake order for the progression map: 1–5 L→R, then 6–10 R→L. */
+  function mapSlotIndex(levelNum) {
+    if (levelNum <= 5) return levelNum - 1;
+    return 5 + (10 - levelNum);
+  }
+
+  function renderMapTrail() {
+    if (!levelMapTrail) return;
+    // Thin pastel polyline through node centers in play order 1→10
+    const positions = [];
+    for (let n = 1; n <= TOTAL_LEVELS; n++) {
+      const slot = mapSlotIndex(n);
+      const row = Math.floor(slot / 5);
+      const colInRow = slot % 5;
+      const col = row === 0 ? colInRow : 4 - colInRow;
+      // Percent centers of a 5-col × 2-row grid
+      const x = ((col + 0.5) / 5) * 100;
+      const y = ((row + 0.5) / 2) * 100;
+      positions.push(`${x},${y}`);
+    }
+    levelMapTrail.innerHTML = `
+      <svg class="level-map__svg" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
+        <polyline
+          class="level-map__line"
+          fill="none"
+          points="${positions.join(" ")}"
+        />
+      </svg>`;
+  }
+
   function renderLevelSelect() {
     levelGridEl.innerHTML = "";
-    for (let n = 1; n <= TOTAL_LEVELS; n++) {
+    renderMapTrail();
+
+    // Render in snake visual order so DOM matches the trail layout
+    const order = [1, 2, 3, 4, 5, 10, 9, 8, 7, 6];
+    order.forEach((n) => {
       const unlocked = n <= UNLOCKED_THROUGH;
       const btn = document.createElement("button");
       btn.type = "button";
@@ -380,11 +481,12 @@
         btn.addEventListener("click", () => loadLevel(n));
       }
       levelGridEl.appendChild(btn);
-    }
+    });
   }
 
   function showSelect() {
     solved = false;
+    stopTimer();
     closeCompleteModal();
     playScreen.classList.add("is-hidden");
     selectScreen.classList.remove("is-hidden");
@@ -419,6 +521,8 @@
           visualRotation: 0,
           connections: [false, false, false, false],
           locked: false,
+          maxRotations: null,
+          rotationsUsed: 0,
           colorId: 0,
           flowColorId: -1,
           flowDirection: null,
@@ -436,6 +540,11 @@
       cell.rotation = t.rotation;
       cell.visualRotation = t.rotation;
       cell.locked = !!t.locked;
+      cell.maxRotations =
+        t.maxRotations != null && t.maxRotations >= 0
+          ? Number(t.maxRotations)
+          : null;
+      cell.rotationsUsed = 0;
       cell.colorId = t.colorId != null ? t.colorId : 0;
       cell.flowDirection = t.flowDirection || null;
       cell.connections = computeConnections(
@@ -454,6 +563,8 @@
       par: levelDef.par,
       name: levelDef.name,
       id: levelDef.id,
+      perfectTime:
+        levelDef.perfectTime != null ? Number(levelDef.perfectTime) : null,
     };
   }
 
@@ -587,6 +698,11 @@
     );
   }
 
+  function remainingRotations(tile) {
+    if (tile.maxRotations == null) return null;
+    return Math.max(0, tile.maxRotations - tile.rotationsUsed);
+  }
+
   function lockedBadgeHtml() {
     return `<span class="flow-tile__lock" aria-hidden="true">
       <svg width="14" height="14" viewBox="0 0 24 24" fill="none">
@@ -594,6 +710,60 @@
         <path d="M8 11V8a4 4 0 0 1 8 0v3" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/>
       </svg>
     </span>`;
+  }
+
+  function rotationsBadgeHtml(left) {
+    return `<span class="flow-tile__budget" aria-hidden="true">${left} left</span>`;
+  }
+
+  function tileAriaLabel(tile) {
+    if (tile.locked && isRotatable(tile.type)) {
+      return `${tile.type} pipe, locked at ${tile.rotation} degrees`;
+    }
+    if (isRotatable(tile.type)) {
+      const left = remainingRotations(tile);
+      const budget =
+        left != null ? ` ${left} rotation${left === 1 ? "" : "s"} left.` : "";
+      return `${tile.type} pipe, rotation ${tile.rotation} degrees.${budget} Activate to rotate.`;
+    }
+    if (tile.type === "source") {
+      return `Source light, color ${tile.colorId}`;
+    }
+    if (tile.type === "target") {
+      return `Target socket, color ${tile.colorId}`;
+    }
+    return "";
+  }
+
+  function syncTileChrome(tile) {
+    const el = tileEls.get(`${tile.row},${tile.col}`);
+    if (!el) return;
+
+    el.classList.toggle("flow-tile--locked", !!tile.locked);
+    if (el.tagName === "BUTTON") {
+      el.disabled = !!tile.locked;
+    }
+
+    const oldLock = el.querySelector(".flow-tile__lock");
+    const oldBudget = el.querySelector(".flow-tile__budget");
+    if (oldLock) oldLock.remove();
+    if (oldBudget) oldBudget.remove();
+
+    if (tile.locked && isRotatable(tile.type)) {
+      el.insertAdjacentHTML("beforeend", lockedBadgeHtml());
+    } else if (
+      isRotatable(tile.type) &&
+      !tile.locked &&
+      tile.maxRotations != null
+    ) {
+      const left = remainingRotations(tile);
+      if (left != null && left > 0) {
+        el.insertAdjacentHTML("beforeend", rotationsBadgeHtml(left));
+      }
+    }
+
+    const label = tileAriaLabel(tile);
+    if (label) el.setAttribute("aria-label", label);
   }
 
   function renderBoard() {
@@ -624,21 +794,8 @@
 
         if (rotatable) {
           el.type = "button";
-          el.setAttribute(
-            "aria-label",
-            `${tile.type} pipe, rotation ${tile.rotation} degrees. Activate to rotate.`
-          );
           el.addEventListener("click", () => onTileClick(r, c));
-        } else if (tile.locked && isRotatable(tile.type)) {
-          el.setAttribute(
-            "aria-label",
-            `${tile.type} pipe, locked at ${tile.rotation} degrees`
-          );
-        } else if (tile.type === "source") {
-          el.setAttribute("aria-label", `Source light, color ${tile.colorId}`);
-        } else if (tile.type === "target") {
-          el.setAttribute("aria-label", `Target socket, color ${tile.colorId}`);
-        } else {
+        } else if (tile.type === "empty") {
           el.setAttribute("aria-hidden", "true");
         }
 
@@ -654,12 +811,9 @@
         rotator.innerHTML = tileSvg(tile);
         el.appendChild(rotator);
 
-        if (tile.locked && isRotatable(tile.type)) {
-          el.insertAdjacentHTML("beforeend", lockedBadgeHtml());
-        }
-
         flowGridEl.appendChild(el);
         tileEls.set(`${r},${c}`, el);
+        syncTileChrome(tile);
       }
     }
 
@@ -701,12 +855,7 @@
         rotator.style.transform = `rotate(${tile.visualRotation}deg)`;
       }
     }
-    if (isRotatable(tile.type) && !tile.locked) {
-      el.setAttribute(
-        "aria-label",
-        `${tile.type} pipe, rotation ${tile.rotation} degrees. Activate to rotate.`
-      );
-    }
+    syncTileChrome(tile);
   }
 
   /* -------------------------------------------------------------------- */
@@ -723,6 +872,13 @@
 
     if (tile.type === "oneway") {
       tile.flowDirection = rotateFlowDirection(tile.flowDirection, 1);
+    }
+
+    if (tile.maxRotations != null) {
+      tile.rotationsUsed += 1;
+      if (tile.rotationsUsed >= tile.maxRotations) {
+        tile.locked = true;
+      }
     }
 
     tile.connections = computeConnections(
@@ -744,20 +900,43 @@
 
     if (ok) {
       solved = true;
+      stopTimer();
+      // Freeze elapsed at solve moment
+      if (levelStartMs) {
+        elapsedSec = Math.floor((Date.now() - levelStartMs) / 1000);
+        updateTimerDisplay();
+      }
       const stars = starsForMoves(moveCount, grid.par);
       saveBestStars(grid.id, stars);
-      window.setTimeout(() => openCompleteModal(stars), 420);
+      const perfect =
+        stars >= 3 &&
+        grid.perfectTime != null &&
+        elapsedSec <= grid.perfectTime;
+      window.setTimeout(() => openCompleteModal(stars, perfect), 420);
     }
   }
 
-  function openCompleteModal(stars) {
+  function openCompleteModal(stars, perfect) {
     completeStars.querySelectorAll(".star").forEach((el) => {
       const i = Number(el.getAttribute("data-i"));
       el.classList.toggle("is-lit", i <= stars);
     });
-    completeMsg.textContent = `Finished in ${moveCount} move${
+
+    let msg = `Finished in ${moveCount} move${
       moveCount === 1 ? "" : "s"
     } (par ${grid.par}). ${stars} star${stars === 1 ? "" : "s"}!`;
+    if (grid.perfectTime != null) {
+      msg += ` Time ${formatTime(elapsedSec)}.`;
+    }
+    completeMsg.textContent = msg;
+
+    if (perfectBadge) {
+      perfectBadge.classList.toggle("is-visible", !!perfect);
+      perfectBadge.setAttribute("aria-hidden", perfect ? "false" : "true");
+    }
+    if (completeCard) {
+      completeCard.classList.toggle("modal-card--perfect", !!perfect);
+    }
 
     const hasNext =
       currentLevelId < UNLOCKED_THROUGH && getLevelDef(currentLevelId + 1);
@@ -771,6 +950,13 @@
   function closeCompleteModal() {
     completeModal.classList.remove("is-open");
     completeModal.setAttribute("aria-hidden", "true");
+    if (perfectBadge) {
+      perfectBadge.classList.remove("is-visible");
+      perfectBadge.setAttribute("aria-hidden", "true");
+    }
+    if (completeCard) {
+      completeCard.classList.remove("modal-card--perfect");
+    }
   }
 
   /* -------------------------------------------------------------------- */
@@ -792,6 +978,7 @@
     hudPar.textContent = String(def.par);
     levelNameEl.textContent = def.name;
 
+    syncTimerHud(def);
     showPlay();
     renderBoard();
     checkSolved(grid);
@@ -816,6 +1003,17 @@
       showSelect();
     }
   });
+
+  if (btnResetProgress) {
+    btnResetProgress.addEventListener("click", () => {
+      const ok = window.confirm(
+        "Reset all Flow progress? Star ratings for every level will be cleared."
+      );
+      if (!ok) return;
+      clearAllFlowProgress();
+      renderLevelSelect();
+    });
+  }
 
   window.FlowGame = {
     computeConnections,

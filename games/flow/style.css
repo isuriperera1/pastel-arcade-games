@@ -26,15 +26,43 @@
 }
 
 /* -------------------------------------------------------------------------- */
-/* Level select                                                               */
+/* Level select — progression map                                             */
 /* -------------------------------------------------------------------------- */
 
-.level-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
-  gap: var(--space-3);
+.level-map {
+  position: relative;
   max-width: 28rem;
   margin: 0 auto;
+  padding: var(--space-2) 0;
+}
+
+.level-map__trail {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.level-map__svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.level-map__line {
+  stroke: color-mix(in srgb, var(--teal) 55%, var(--lavender));
+  stroke-width: 1.1;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.7;
+}
+
+.level-grid {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: var(--space-3) var(--space-2);
 }
 
 .level-card {
@@ -102,6 +130,27 @@
 .level-card:disabled .level-card__num,
 .level-card:disabled .level-card__stars {
   opacity: 0.35;
+}
+
+.flow-reset-wrap {
+  margin: var(--space-5) 0 0;
+}
+
+.flow-reset-link {
+  appearance: none;
+  border: none;
+  background: none;
+  padding: 0;
+  font: inherit;
+  font-size: 0.8rem;
+  color: var(--ink-faint);
+  text-decoration: underline;
+  text-underline-offset: 0.15em;
+  cursor: pointer;
+}
+
+.flow-reset-link:hover {
+  color: var(--ink-muted);
 }
 
 /* -------------------------------------------------------------------------- */
@@ -175,6 +224,24 @@
   color: var(--ink-muted);
   opacity: 0.55;
   pointer-events: none;
+}
+
+.flow-tile__budget {
+  position: absolute;
+  top: 3px;
+  right: 3px;
+  z-index: 2;
+  padding: 0.1rem 0.28rem;
+  border-radius: 4px;
+  font-size: 0.55rem;
+  font-weight: 600;
+  line-height: 1.2;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+  background: color-mix(in srgb, var(--cream) 88%, var(--teal));
+  box-shadow: var(--shadow-soft);
+  pointer-events: none;
+  white-space: nowrap;
 }
 
 .flow-tile--empty {
@@ -378,6 +445,76 @@
   }
 }
 
+.perfect-badge {
+  display: none;
+  margin: 0 0 var(--space-3);
+  text-align: center;
+  font-weight: 700;
+  font-size: 1.05rem;
+  letter-spacing: 0.04em;
+  background: linear-gradient(
+    110deg,
+    var(--flow-gold) 0%,
+    var(--pink) 35%,
+    var(--lavender) 55%,
+    var(--flow-gold-soft) 75%,
+    var(--flow-gold) 100%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: perfect-shimmer 2.4s ease-in-out infinite;
+}
+
+.perfect-badge.is-visible {
+  display: block;
+}
+
+.modal-card--perfect {
+  box-shadow:
+    var(--shadow-lift),
+    0 0 0 1px color-mix(in srgb, var(--flow-gold) 45%, transparent),
+    0 0 28px color-mix(in srgb, var(--flow-gold-soft) 55%, transparent);
+}
+
+@keyframes perfect-shimmer {
+  0% {
+    background-position: 0% center;
+  }
+  100% {
+    background-position: 200% center;
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Reduced motion                                                             */
+/* -------------------------------------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce) {
+  .level-card,
+  .flow-tile__rotator,
+  .flow-tile.is-flowing .flow-pipe,
+  .flow-source-orb,
+  .flow-tile.is-solved-target .flow-target-ring,
+  .star-row .star.is-lit,
+  .perfect-badge {
+    animation: none !important;
+    transition: none !important;
+  }
+
+  .flow-tile.is-flowing .flow-pipe {
+    stroke-dasharray: none;
+  }
+
+  .perfect-badge {
+    background: none;
+    -webkit-background-clip: unset;
+    background-clip: unset;
+    color: var(--flow-gold);
+  }
+}
+
 /* -------------------------------------------------------------------------- */
 /* Responsive                                                                 */
 /* -------------------------------------------------------------------------- */
@@ -388,7 +525,6 @@
   }
 
   .level-grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
     gap: var(--space-2);
   }
 
@@ -399,5 +535,10 @@
 
   .level-card__num {
     font-size: 1.1rem;
+  }
+
+  .flow-tile__budget {
+    font-size: 0.5rem;
+    padding: 0.08rem 0.2rem;
   }
 }

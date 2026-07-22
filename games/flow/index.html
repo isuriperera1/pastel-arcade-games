@@ -20,7 +20,15 @@
         <!-- Level select (entry) -->
         <section class="game-shell" id="select-screen" aria-label="Level select">
           <h2 class="flow-section-title">Choose a level</h2>
-          <div class="level-grid" id="level-grid" role="list"></div>
+          <div class="level-map">
+            <div class="level-map__trail" id="level-map-trail" aria-hidden="true"></div>
+            <div class="level-grid" id="level-grid" role="list"></div>
+          </div>
+          <p class="text-center flow-reset-wrap">
+            <button type="button" class="flow-reset-link" id="btn-reset-progress">
+              Reset all progress
+            </button>
+          </p>
         </section>
 
         <!-- Puzzle play -->
@@ -38,6 +46,10 @@
               <div class="stat">
                 <span class="stat__label">Par</span>
                 <span class="stat__value" id="hud-par">—</span>
+              </div>
+              <div class="stat is-hidden" id="hud-timer-stat" aria-hidden="true">
+                <span class="stat__label">Time</span>
+                <span class="stat__value" id="hud-timer">00:00</span>
               </div>
             </div>
             <div class="btn-group hud-actions">
@@ -63,6 +75,7 @@
             <div class="modal-backdrop" id="complete-modal" aria-hidden="true">
               <div
                 class="modal-card"
+                id="complete-card"
                 role="dialog"
                 aria-labelledby="complete-title"
                 aria-describedby="complete-msg"
@@ -73,6 +86,13 @@
                   <span class="star" data-i="2">★</span>
                   <span class="star" data-i="3">★</span>
                 </div>
+                <p
+                  class="perfect-badge"
+                  id="perfect-badge"
+                  aria-hidden="true"
+                >
+                  Perfect Solve!
+                </p>
                 <p id="complete-msg">Nice routing!</p>
                 <div class="btn-group">
                   <button type="button" class="btn btn--primary" id="btn-next">
