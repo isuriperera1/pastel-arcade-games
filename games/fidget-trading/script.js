@@ -148,7 +148,7 @@
     endInventory: document.getElementById("end-inventory"),
   };
 
-  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, selecting: boolean, selectedCatalogIds: Set<string>, startingValue: number, justReceivedIds: Set<string>, muted: boolean, lastMovedId: string|null, aiDesire: Map<string, number>, consecutiveAiCounters: number, aiPersonality: number, desireTradesSinceRotation: number, desireRotateAfterTrades: number, desireSecSinceRotation: number, desireRotateAfterSec: number, farmStreak: number, lastFarmPairing: string|null, caughtOnIds: Set<string>, caughtOnRoundsLeft: number }} */
+  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, selecting: boolean, selectedCatalogIds: Set<string>, startingValue: number, justReceivedIds: Set<string>, muted: boolean, lastMovedId: string|null, aiDesire: Map<string, number>, consecutiveAiCounters: number, aiPersonality: number, desireTradesSinceRotation: number, desireRotateAfterTrades: number, desireSecSinceRotation: number, desireRotateAfterSec: number, farmStreak: number, lastFarmPairing: string|null, caughtOnIds: Set<string>, caughtOnRoundsLeft: number, pendingCaughtSpeech: string|null }} */
   const state = {
     inventory: [],
     offer: [],
