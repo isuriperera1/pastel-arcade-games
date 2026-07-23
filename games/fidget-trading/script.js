@@ -1,7 +1,6 @@
 /**
- * Fidget Trading — Parts 1–4
- * Board, inventories, click-to-offer, fairness meter, AI reactions,
- * Accept / Decline / Counter, timer enforcement & end-of-session.
+ * Fidget Trading — polished trade loop
+ * Board, inventories, AI, Accept / Decline / Counter, timer, SFX, a11y.
  */
 
 (function () {
@@ -27,6 +26,7 @@
   const AI_SPEECH_MS = 3200;
   const SWAP_ANIM_MS = 560;
   const RETURN_ANIM_MS = 420;
+  const SQUISH_MS = 180;
   const RECEIVED_GLOW_MS = 1000;
   const VALUE_FLASH_MS = 1100;
   const POST_TRADE_OPENING_DELAY_MS = 900;
@@ -34,6 +34,7 @@
   const CONFETTI_MIN = 40;
   const CONFETTI_MAX = 60;
   const CONFETTI_DURATION_MS = 2600;
+  const MUTE_STORAGE_KEY = "arcade-games-fidget-muted";
   const TIER_ORDER = { normal: 0, glitter: 1, butter: 2 };
   const CONFETTI_COLORS = [
     "var(--teal)",
@@ -43,6 +44,10 @@
   ];
   const prefersReducedMotion = () =>
     window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function animMs(fullMs) {
+    return prefersReducedMotion() ? 0 : fullMs;
+  }
 
   /**
    * Fairness ratio = playerOfferValue / aiOfferValue
@@ -74,6 +79,8 @@
     btnAccept: document.getElementById("btn-accept"),
     btnDecline: document.getElementById("btn-decline"),
     btnCounter: document.getElementById("btn-counter"),
+    btnMute: document.getElementById("btn-mute"),
+    muteLabel: document.getElementById("mute-label"),
     btnEndTrading: document.getElementById("btn-end-trading"),
     btnTradeAgain: document.getElementById("btn-trade-again"),
     actionHint: document.getElementById("trade-action-hint"),
@@ -86,7 +93,7 @@
     endInventory: document.getElementById("end-inventory"),
   };
 
-  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, startingValue: number, justReceivedIds: Set<string> }} */
+  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, startingValue: number, justReceivedIds: Set<string>, muted: boolean, lastMovedId: string|null }} */
   const state = {
     inventory: [],
     offer: [],
@@ -101,6 +108,8 @@
     sessionEnded: false,
     startingValue: STARTING_BUDGET,
     justReceivedIds: new Set(),
+    muted: false,
+    lastMovedId: null,
   };
 
   let evalDebounceId = null;
@@ -112,8 +121,138 @@
   let glowTimeoutId = null;
   let swapTimeoutId = null;
   let returnTimeoutId = null;
+  let squishTimeoutId = null;
   let evalGeneration = 0;
   let audioCtx = null;
+
+  function loadMutePref() {
+    try {
+      return localStorage.getItem(MUTE_STORAGE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function saveMutePref(muted) {
+    try {
+      localStorage.setItem(MUTE_STORAGE_KEY, muted ? "1" : "0");
+    } catch (_) {
+      /* ignore quota / private mode */
+    }
+  }
+
+  function syncMuteUi() {
+    if (!els.btnMute) return;
+    els.btnMute.setAttribute("aria-pressed", state.muted ? "true" : "false");
+    els.btnMute.setAttribute("aria-label", state.muted ? "Unmute sound" : "Mute sound");
+    els.btnMute.title = state.muted ? "Unmute sound" : "Mute sound";
+    if (els.muteLabel) {
+      els.muteLabel.textContent = state.muted ? "Sound off" : "Sound on";
+    }
+  }
+
+  function ensureAudio() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtx) audioCtx = new Ctx();
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+  }
+
+  /**
+   * Lightweight Web Audio SFX (no external files).
+   * @param {"place"|"accept"|"decline"|"counter"} kind
+   */
+  function playSfx(kind) {
+    if (state.muted) return;
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+
+      if (kind === "place") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(420, t0);
+        osc.frequency.exponentialRampToValueAtTime(280, t0 + 0.08);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.06, t0 + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.13);
+        return;
+      }
+
+      if (kind === "accept") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(740, t0);
+        osc.frequency.exponentialRampToValueAtTime(1180, t0 + 0.09);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.09, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.3);
+        return;
+      }
+
+      if (kind === "decline") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(260, t0);
+        osc.frequency.exponentialRampToValueAtTime(210, t0 + 0.07);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.045, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.11);
+        return;
+      }
+
+      if (kind === "counter") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(520, t0);
+        osc.frequency.setValueAtTime(640, t0 + 0.05);
+        osc.frequency.setValueAtTime(480, t0 + 0.1);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.05, t0 + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.17);
+      }
+    } catch (_) {
+      /* silent if audio blocked */
+    }
+  }
+
+  function playTradeDing() {
+    playSfx("accept");
+  }
+
+  function toggleMute() {
+    state.muted = !state.muted;
+    saveMutePref(state.muted);
+    syncMuteUi();
+    if (!state.muted) {
+      ensureAudio();
+      playSfx("place");
+    }
+  }
 
   function formatTime(totalSec) {
     const m = Math.floor(totalSec / 60);
@@ -308,31 +447,6 @@
     }, VALUE_FLASH_MS);
   }
 
-  function playTradeDing() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtx) audioCtx = new Ctx();
-      if (audioCtx.state === "suspended") audioCtx.resume();
-
-      const t0 = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(740, t0);
-      osc.frequency.exponentialRampToValueAtTime(1180, t0 + 0.09);
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(0.11, t0 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(t0);
-      osc.stop(t0 + 0.3);
-    } catch (_) {
-      /* silent if audio blocked */
-    }
-  }
-
   /**
    * Map player delta (aiValue - playerValue) to marker position.
    * Center = equal; left = player favored (green); right = AI favored (pink).
@@ -434,6 +548,9 @@
     if (state.justReceivedIds.has(item.instanceId) && !staticCard) {
       btn.classList.add("is-just-received");
     }
+    if (state.lastMovedId === item.instanceId && !staticCard && !prefersReducedMotion()) {
+      btn.classList.add("is-squishing");
+    }
     btn.dataset.instanceId = item.instanceId;
     btn.dataset.location = location;
     btn.disabled = staticCard || state.locked || state.sessionEnded;
@@ -448,7 +565,10 @@
     btn.innerHTML = `
       <div class="fidget-card__art">${renderBlobArt(item)}</div>
       <span class="fidget-card__name">${item.name}</span>
-      <span class="fidget-card__tier">${item.tier}</span>
+      <span class="fidget-card__tier">
+        <span class="fidget-card__tier-icon fidget-card__tier-icon--${item.tier}" aria-hidden="true"></span>
+        ${item.tier}
+      </span>
     `;
     if (!staticCard) {
       btn.addEventListener("click", () => onCardClick(item.instanceId, location));
@@ -463,6 +583,63 @@
     }
   }
 
+  /**
+   * Ownership invariant: every instanceId appears in exactly one of
+   * player inventory, player offer, AI inventory, AI offer.
+   */
+  function assertOwnership(context) {
+    const buckets = [
+      ["inventory", state.inventory],
+      ["offer", state.offer],
+      ["aiInventory", state.aiInventory],
+      ["aiOffer", state.aiOffer],
+    ];
+    const seen = new Map();
+    let ok = true;
+
+    for (const [name, list] of buckets) {
+      for (const item of list) {
+        const id = item && item.instanceId;
+        if (!id) {
+          ok = false;
+          console.warn("[fidget] missing instanceId in", name, context);
+          continue;
+        }
+        if (seen.has(id)) {
+          ok = false;
+          console.warn(
+            "[fidget] duplicate ownership",
+            id,
+            "in",
+            seen.get(id),
+            "and",
+            name,
+            context
+          );
+        } else {
+          seen.set(id, name);
+        }
+      }
+    }
+
+    return ok;
+  }
+
+  function clearSquishSoon() {
+    if (squishTimeoutId) {
+      clearTimeout(squishTimeoutId);
+      squishTimeoutId = null;
+    }
+    const delay = animMs(SQUISH_MS);
+    squishTimeoutId = setTimeout(() => {
+      state.lastMovedId = null;
+      squishTimeoutId = null;
+      document.querySelectorAll(".fidget-card.is-squishing").forEach((el) => {
+        el.classList.remove("is-squishing");
+      });
+    }, delay || 1);
+  }
+
   function renderAll() {
     renderList(els.inventory, state.inventory, "inventory");
     renderList(els.yourOffer, state.offer, "offer");
@@ -471,6 +648,8 @@
     updateHud();
     updateFairnessMeter();
     updateActionButtons();
+    assertOwnership("renderAll");
+    if (state.lastMovedId) clearSquishSoon();
   }
 
   function findOwned(instanceId) {
@@ -524,7 +703,7 @@
       evalDebounceId = null;
       if (gen !== evalGeneration || state.locked) return;
       runAiEvaluation(gen);
-    }, AI_EVAL_DEBOUNCE_MS);
+    }, animMs(AI_EVAL_DEBOUNCE_MS));
   }
 
   /**
@@ -659,11 +838,13 @@
 
     // counter
     setAiStatus("AI is thinking...", "thinking");
+    playSfx("counter");
     thinkTimeoutId = setTimeout(() => {
       thinkTimeoutId = null;
       if (gen !== evalGeneration || state.locked) return;
 
       const changed = applyAiCounter();
+      assertOwnership("aiCounter");
       renderAll();
 
       if (changed) {
@@ -672,7 +853,7 @@
         setAiStatus("AI wants more!", "decline");
         showAiSpeech("That's not a fair trade for me!");
       }
-    }, AI_THINK_PAUSE_MS);
+    }, animMs(AI_THINK_PAUSE_MS));
   }
 
   /**
@@ -681,6 +862,11 @@
    */
   function placeAiOpeningOffer() {
     if (state.sessionEnded) return;
+
+    // Safety: never stack openings — stray offers return to owners first
+    if (state.offer.length || state.aiOffer.length) {
+      returnOffersToInventories();
+    }
 
     if (!state.aiInventory.length) {
       state.openingDone = true;
@@ -735,6 +921,7 @@
     state.locked = false;
 
     setAiStatus("AI is waiting for your offer", "thinking");
+    assertOwnership("openingOffer");
     renderAll();
   }
 
@@ -782,6 +969,7 @@
     state.aiOffer = [];
     state.justReceivedIds = new Set(receivedIds);
     state.tradesCompleted += 1;
+    assertOwnership("executeTradeSwap");
   }
 
   function onAccept() {
@@ -805,6 +993,7 @@
     playTradeDing();
     els.table.classList.add("is-swapping");
 
+    const swapDelay = animMs(SWAP_ANIM_MS);
     if (swapTimeoutId) clearTimeout(swapTimeoutId);
     swapTimeoutId = setTimeout(() => {
       swapTimeoutId = null;
@@ -819,8 +1008,8 @@
 
       renderAll();
       clearJustReceivedSoon();
-      scheduleOpeningOffer(POST_TRADE_OPENING_DELAY_MS);
-    }, SWAP_ANIM_MS);
+      scheduleOpeningOffer(animMs(POST_TRADE_OPENING_DELAY_MS));
+    }, swapDelay);
   }
 
   function returnOffersToInventories() {
@@ -828,6 +1017,7 @@
     state.aiInventory = state.aiInventory.concat(state.aiOffer);
     state.offer = [];
     state.aiOffer = [];
+    assertOwnership("returnOffers");
   }
 
   function onDecline() {
@@ -840,10 +1030,12 @@
     state.locked = true;
     updateActionButtons();
 
+    playSfx("decline");
     els.table.classList.add("is-returning");
     setAiStatus("Trade declined", "decline");
     showActionHint("Trade declined");
 
+    const returnDelay = animMs(RETURN_ANIM_MS);
     if (returnTimeoutId) clearTimeout(returnTimeoutId);
     returnTimeoutId = setTimeout(() => {
       returnTimeoutId = null;
@@ -852,8 +1044,8 @@
 
       returnOffersToInventories();
       renderAll();
-      scheduleOpeningOffer(POST_TRADE_OPENING_DELAY_MS);
-    }, RETURN_ANIM_MS);
+      scheduleOpeningOffer(animMs(POST_TRADE_OPENING_DELAY_MS));
+    }, returnDelay);
   }
 
   function onCounter() {
@@ -864,14 +1056,17 @@
 
     const added = tryAiAddMore();
     if (added) {
+      playSfx("counter");
       setAiStatus("AI sweetened the offer", "counter");
       showAiSpeech("Fine — I'll add a little more.");
+      assertOwnership("playerCounter");
       renderAll();
       // Re-evaluate if player already has items on the table
       if (state.offer.length > 0) {
         scheduleAiEvaluation();
       }
     } else {
+      playSfx("decline");
       setAiStatus("AI won't budge", "decline");
       showAiSpeech("I won't add anything else!");
       updateActionButtons();
@@ -891,9 +1086,14 @@
     } else if (found.list === "offer") {
       const [item] = state.offer.splice(found.index, 1);
       state.inventory.push(item);
+    } else {
+      return;
     }
 
+    state.lastMovedId = instanceId;
+    playSfx("place");
     hideAiSpeech();
+    assertOwnership("cardMove");
     renderAll();
     scheduleAiEvaluation();
   }
@@ -938,6 +1138,10 @@
     if (returnTimeoutId) {
       clearTimeout(returnTimeoutId);
       returnTimeoutId = null;
+    }
+    if (squishTimeoutId) {
+      clearTimeout(squishTimeoutId);
+      squishTimeoutId = null;
     }
   }
 
@@ -1130,8 +1334,10 @@
     state.sessionEnded = false;
     state.startingValue = inventoryValue(state.inventory);
     state.justReceivedIds = new Set();
+    state.lastMovedId = null;
 
     setAiStatus("AI is preparing an offer…", "thinking");
+    assertOwnership("newGame");
     renderAll();
     startTimer();
 
@@ -1139,12 +1345,18 @@
       openingTimeoutId = null;
       if (state.sessionEnded) return;
       placeAiOpeningOffer();
-    }, AI_OPENING_DELAY_MS);
+    }, animMs(AI_OPENING_DELAY_MS));
   }
+
+  state.muted = loadMutePref();
+  syncMuteUi();
 
   els.btnAccept.addEventListener("click", onAccept);
   els.btnDecline.addEventListener("click", onDecline);
   els.btnCounter.addEventListener("click", onCounter);
+  if (els.btnMute) {
+    els.btnMute.addEventListener("click", toggleMute);
+  }
   if (els.btnEndTrading) {
     els.btnEndTrading.addEventListener("click", onEndTrading);
   }
@@ -1158,6 +1370,7 @@
   window.endSession = endSession;
   window.returnOffersToInventories = returnOffersToInventories;
   window.__fidgetState = state;
+  window.__fidgetAssertOwnership = assertOwnership;
 
   newGame();
 })();

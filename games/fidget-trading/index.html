@@ -21,6 +21,17 @@
           <div class="fidget-toolbar">
             <button
               type="button"
+              class="btn btn--ghost btn--sm fidget-mute-btn"
+              id="btn-mute"
+              aria-pressed="false"
+              aria-label="Mute sound"
+              title="Mute sound"
+            >
+              <span class="fidget-mute-btn__icon" aria-hidden="true">♪</span>
+              <span class="fidget-mute-btn__label" id="mute-label">Sound on</span>
+            </button>
+            <button
+              type="button"
               class="btn btn--ghost btn--sm fidget-end-btn"
               id="btn-end-trading"
               title="End trading session"
@@ -66,6 +77,11 @@
             </section>
 
             <div class="fairness-meter" id="fairness-meter" aria-live="polite">
+              <div class="fairness-meter__labels" aria-hidden="true">
+                <span>You favored</span>
+                <span>Even</span>
+                <span>AI favored</span>
+              </div>
               <div class="fairness-meter__track" aria-hidden="true">
                 <div class="fairness-meter__fill" id="fairness-fill"></div>
                 <div class="fairness-meter__marker" id="fairness-marker"></div>

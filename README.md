@@ -135,7 +135,7 @@ Refresh the hub — your card should appear. Existing games stay untouched.
 | **Tic-Tac-Toe** | `games/tic-tac-toe` | 2-player or vs AI, round scores saved |
 | **Peek-a-Boo** | `games/whack-a-mole` | Timed tap game, difficulty ramps, high score saved |
 | **Crownward** | `games/crownward` | Side-scroller to the Grand Castle; 30:00 timer, checkpoints, analytics in localStorage |
-| **Fidget Trading** | `games/fidget-trading` | Trade squishies with the AI; timer + end-of-session tally |
+| **Fidget Trading** | `games/fidget-trading` | Trade squishies with the AI — 3 tiers (normal / glitter / butter), 20♦ start, accept / decline / counter, 10-min timer, confetti end |
 
 ## Architecture notes
 
