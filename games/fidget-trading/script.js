@@ -16,9 +16,48 @@
   /**
    * Personality / difficulty: shifts accept & decline thresholds by this fraction.
    * Positive = pickier AI (harder); negative = more generous (easier).
-   * Keep in roughly ±0.05–0.10.
+   * Per-session roll stays in roughly ±0.05–0.10 for texture.
    */
-  const AI_PERSONALITY = 0.05;
+  const AI_PERSONALITY_MIN = -0.08;
+  const AI_PERSONALITY_MAX = 0.08;
+
+  /**
+   * Desire band per preference rotation: overvalue 1.15–1.40×, undervalue 0.60–0.85×.
+   * Preferences rotate (trades or time) so a single bias can't be farmed all session.
+   */
+  const DESIRE_BOOST_MIN = 0.15;
+  const DESIRE_BOOST_MAX = 0.4;
+  const DESIRE_PICK_MIN = 2;
+  const DESIRE_PICK_MAX = 3;
+  const DESIRE_ROTATE_TRADES_MIN = 3;
+  const DESIRE_ROTATE_TRADES_MAX = 4;
+  /** ~2.5 minutes of session time (±10s) before a forced preference refresh. */
+  const DESIRE_ROTATE_SEC_MIN = 140;
+  const DESIRE_ROTATE_SEC_MAX = 160;
+  /** Chance a spoken desire line is a red herring (must corroborate via outcomes). */
+  const DESIRE_HERRING_CHANCE = 0.175;
+  /** Same item-type pairing profitable this many times in a row → AI "catches on". */
+  const DESIRE_FARM_STREAK_LIMIT = 2;
+  const DESIRE_CAUGHT_ROUNDS_MIN = 1;
+  const DESIRE_CAUGHT_ROUNDS_MAX = 2;
+
+  const DESIRE_LOVE_CUES = [
+    "I really love this one!",
+    "Ooh, I've been wanting that!",
+    "This one's a favorite!",
+  ];
+  const DESIRE_DISMISS_CUES = [
+    "eh, I don't need this",
+    "Not really my thing…",
+    "I could take or leave that.",
+  ];
+  const DESIRE_CAUGHT_CUES = [
+    "Wait a second...",
+    "Hmm, let me think about this differently",
+  ];
+
+  /** After this many consecutive AI counters in one negotiation, force accept|decline. */
+  const AI_COUNTER_CAP = 3;
 
   const AI_OPENING_DELAY_MS = 1000;
   const AI_EVAL_DEBOUNCE_MS = 800;
@@ -61,9 +100,12 @@
    * - ratio >= acceptThreshold (~0.95 ± personality): fair-to-AI-favorable
    * - counter band: [declineThreshold, acceptThreshold)
    * - ratio < declineThreshold (~0.75 ± personality): heavily favors player
+   *
+   * Player-facing meter uses raw diamond costs.
+   * AI decisions use perceived values: cost × desireMultiplier (see calculatePerceivedFairness).
    */
-  const RATIO_ACCEPT_BASE = 0.95;
-  const RATIO_DECLINE_BASE = 0.75;
+  const RATIO_ACCEPT_BASE = 0.9;
+  const RATIO_DECLINE_BASE = 0.7;
 
   const els = {
     selectScreen: document.getElementById("select-screen"),
@@ -106,7 +148,7 @@
     endInventory: document.getElementById("end-inventory"),
   };
 
-  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, selecting: boolean, selectedCatalogIds: Set<string>, startingValue: number, justReceivedIds: Set<string>, muted: boolean, lastMovedId: string|null }} */
+  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, selecting: boolean, selectedCatalogIds: Set<string>, startingValue: number, justReceivedIds: Set<string>, muted: boolean, lastMovedId: string|null, aiDesire: Map<string, number>, consecutiveAiCounters: number, aiPersonality: number, desireTradesSinceRotation: number, desireRotateAfterTrades: number, desireSecSinceRotation: number, desireRotateAfterSec: number, farmStreak: number, lastFarmPairing: string|null, caughtOnIds: Set<string>, caughtOnRoundsLeft: number }} */
   const state = {
     inventory: [],
     offer: [],
@@ -125,6 +167,19 @@
     justReceivedIds: new Set(),
     muted: false,
     lastMovedId: null,
+    /** catalog id → desire multiplier (default 1.0 if absent); rotates mid-session */
+    aiDesire: new Map(),
+    consecutiveAiCounters: 0,
+    aiPersonality: 0.05,
+    desireTradesSinceRotation: 0,
+    desireRotateAfterTrades: DESIRE_ROTATE_TRADES_MIN,
+    desireSecSinceRotation: 0,
+    desireRotateAfterSec: 150,
+    farmStreak: 0,
+    lastFarmPairing: null,
+    caughtOnIds: new Set(),
+    caughtOnRoundsLeft: 0,
+    pendingCaughtSpeech: null,
   };
 
   let evalDebounceId = null;
@@ -279,6 +334,251 @@
 
   function inventoryValue(items) {
     return items.reduce((sum, item) => sum + (item.cost || 0), 0);
+  }
+
+  function shuffleInPlace(arr) {
+    for (let i = arr.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = arr[i];
+      arr[i] = arr[j];
+      arr[j] = tmp;
+    }
+    return arr;
+  }
+
+  function rollPersonality() {
+    return (
+      AI_PERSONALITY_MIN +
+      Math.random() * (AI_PERSONALITY_MAX - AI_PERSONALITY_MIN)
+    );
+  }
+
+  function desireBand() {
+    return DESIRE_BOOST_MIN + Math.random() * (DESIRE_BOOST_MAX - DESIRE_BOOST_MIN);
+  }
+
+  function pickDesireCue(list) {
+    return list[Math.floor(Math.random() * list.length)];
+  }
+
+  function rollDesireRotateAfterTrades() {
+    return (
+      DESIRE_ROTATE_TRADES_MIN +
+      Math.floor(Math.random() * (DESIRE_ROTATE_TRADES_MAX - DESIRE_ROTATE_TRADES_MIN + 1))
+    );
+  }
+
+  function rollDesireRotateAfterSec() {
+    return (
+      DESIRE_ROTATE_SEC_MIN +
+      Math.floor(Math.random() * (DESIRE_ROTATE_SEC_MAX - DESIRE_ROTATE_SEC_MIN + 1))
+    );
+  }
+
+  function resetDesireRotationTriggers() {
+    state.desireTradesSinceRotation = 0;
+    state.desireSecSinceRotation = 0;
+    state.desireRotateAfterTrades = rollDesireRotateAfterTrades();
+    state.desireRotateAfterSec = rollDesireRotateAfterSec();
+  }
+
+  function clearFarmTracking() {
+    state.farmStreak = 0;
+    state.lastFarmPairing = null;
+    state.caughtOnIds = new Set();
+    state.caughtOnRoundsLeft = 0;
+    state.pendingCaughtSpeech = null;
+  }
+
+  /**
+   * Secret desires for unique catalog ids in the AI's *current* inventory (inv + offer).
+   * 2–3 overvalued (1.15–1.40×), 2–3 undervalued (0.60–0.85×); rest stay 1.0.
+   * Does not announce rotation — dialogue cues shift organically.
+   */
+  function rollAiDesires(aiItems) {
+    const map = new Map();
+    const uniqueIds = [];
+    const seen = new Set();
+    for (const item of aiItems || []) {
+      if (!item || !item.id || seen.has(item.id)) continue;
+      seen.add(item.id);
+      uniqueIds.push(item.id);
+    }
+    shuffleInPlace(uniqueIds);
+
+    const overCount = Math.min(
+      uniqueIds.length,
+      DESIRE_PICK_MIN + Math.floor(Math.random() * (DESIRE_PICK_MAX - DESIRE_PICK_MIN + 1))
+    );
+    let underCount = Math.min(
+      Math.max(0, uniqueIds.length - overCount),
+      DESIRE_PICK_MIN + Math.floor(Math.random() * (DESIRE_PICK_MAX - DESIRE_PICK_MIN + 1))
+    );
+
+    for (let i = 0; i < overCount; i++) {
+      map.set(uniqueIds[i], 1 + desireBand());
+    }
+    for (let i = 0; i < underCount; i++) {
+      map.set(uniqueIds[overCount + i], 1 - desireBand());
+    }
+
+    state.aiDesire = map;
+    return map;
+  }
+
+  function currentAiItemPool() {
+    return state.aiInventory.concat(state.aiOffer);
+  }
+
+  /** Rotate preferences silently; reset trade/timer triggers and anti-farm streak. */
+  function rotateAiDesires() {
+    rollAiDesires(currentAiItemPool());
+    resetDesireRotationTriggers();
+    clearFarmTracking();
+  }
+
+  function shouldRotateDesires() {
+    return (
+      state.desireTradesSinceRotation >= state.desireRotateAfterTrades ||
+      state.desireSecSinceRotation >= state.desireRotateAfterSec
+    );
+  }
+
+  function maybeRotateDesires() {
+    if (state.sessionEnded || state.selecting) return false;
+    if (!shouldRotateDesires()) return false;
+    rotateAiDesires();
+    return true;
+  }
+
+  /** Hidden preference only (ignores temporary caught-on neutralization). */
+  function getTrueDesireMultiplier(item) {
+    if (!item || !item.id) return 1;
+    const m = state.aiDesire.get(item.id);
+    return m == null ? 1 : m;
+  }
+
+  /**
+   * Effective multiplier for AI fairness. Caught-on items temporarily read as 1.0×.
+   */
+  function getDesireMultiplier(item) {
+    if (!item || !item.id) return 1;
+    if (state.caughtOnRoundsLeft > 0 && state.caughtOnIds.has(item.id)) return 1;
+    return getTrueDesireMultiplier(item);
+  }
+
+  function perceivedInventoryValue(items) {
+    return (items || []).reduce(
+      (sum, item) => sum + (item.cost || 0) * getDesireMultiplier(item),
+      0
+    );
+  }
+
+  /**
+   * Subtle desire dialogue — never exposes multipliers.
+   * ~15–20% red herrings: enthusiasm without overvalue, or dismissive on neutrals.
+   */
+  function desireCueForItem(item) {
+    if (!item) return null;
+    const m = getTrueDesireMultiplier(item);
+    const isOver = m > 1.05;
+    const isUnder = m < 0.95;
+    const isNeutral = !isOver && !isUnder;
+
+    if (Math.random() < DESIRE_HERRING_CHANCE) {
+      if (isNeutral) {
+        return Math.random() < 0.5
+          ? pickDesireCue(DESIRE_LOVE_CUES)
+          : pickDesireCue(DESIRE_DISMISS_CUES);
+      }
+      if (!isOver) return pickDesireCue(DESIRE_LOVE_CUES);
+      return pickDesireCue(DESIRE_DISMISS_CUES);
+    }
+
+    if (isOver) return pickDesireCue(DESIRE_LOVE_CUES);
+    if (isUnder) return pickDesireCue(DESIRE_DISMISS_CUES);
+    return null;
+  }
+
+  /** Subtle dialogue only — never expose multipliers as UI stats. */
+  function maybeSpeakDesireCue(item) {
+    const cue = desireCueForItem(item);
+    if (cue) showAiSpeech(cue);
+  }
+
+  function farmPairingKey(playerOffer, aiOffer) {
+    const give = [
+      ...new Set((playerOffer || []).map((i) => i && i.id).filter(Boolean)),
+    ]
+      .sort()
+      .join(",");
+    const take = [
+      ...new Set((aiOffer || []).map((i) => i && i.id).filter(Boolean)),
+    ]
+      .sort()
+      .join(",");
+    return `${give}>${take}`;
+  }
+
+  function pairingCatalogIds(playerOffer, aiOffer) {
+    const ids = new Set();
+    for (const item of playerOffer || []) {
+      if (item && item.id) ids.add(item.id);
+    }
+    for (const item of aiOffer || []) {
+      if (item && item.id) ids.add(item.id);
+    }
+    return ids;
+  }
+
+  /**
+   * After a profitable accept: track consecutive same item-type pairings.
+   * More than DESIRE_FARM_STREAK_LIMIT in a row → neutralize those ids for 1–2 rounds.
+   */
+  function noteProfitableFarmPairing(playerOffer, aiOffer, rawDelta) {
+    if (!(rawDelta > 0)) {
+      state.farmStreak = 0;
+      state.lastFarmPairing = null;
+      return;
+    }
+
+    const key = farmPairingKey(playerOffer, aiOffer);
+    if (key && key === state.lastFarmPairing) {
+      state.farmStreak += 1;
+    } else {
+      state.lastFarmPairing = key;
+      state.farmStreak = 1;
+    }
+
+    if (state.farmStreak > DESIRE_FARM_STREAK_LIMIT) {
+      state.caughtOnIds = pairingCatalogIds(playerOffer, aiOffer);
+      state.caughtOnRoundsLeft =
+        DESIRE_CAUGHT_ROUNDS_MIN +
+        Math.floor(
+          Math.random() * (DESIRE_CAUGHT_ROUNDS_MAX - DESIRE_CAUGHT_ROUNDS_MIN + 1)
+        );
+      state.farmStreak = 0;
+      state.lastFarmPairing = null;
+      state.pendingCaughtSpeech = pickDesireCue(DESIRE_CAUGHT_CUES);
+    }
+  }
+
+  /** One Accept decision counts as a negotiation round for caught-on decay. */
+  function tickCaughtOnRound() {
+    if (state.caughtOnRoundsLeft <= 0) return;
+    state.caughtOnRoundsLeft -= 1;
+    if (state.caughtOnRoundsLeft <= 0) {
+      state.caughtOnIds = new Set();
+      state.caughtOnRoundsLeft = 0;
+    }
+  }
+
+  function resetAiCounterStreak() {
+    state.consecutiveAiCounters = 0;
+  }
+
+  function noteAiCounterApplied() {
+    state.consecutiveAiCounters += 1;
   }
 
   function catalogById(id) {
@@ -477,7 +777,7 @@
   }
 
   /**
-   * Sum diamond costs on each side of the trade.
+   * Sum diamond costs on each side of the trade (raw / player-facing).
    *
    * ratio = playerOfferValue / aiOfferValue (AI-centric: higher = better for AI).
    * delta = aiOfferValue - playerOfferValue (player gain in diamonds; positive = player favored).
@@ -506,26 +806,56 @@
     return { playerOfferValue, aiOfferValue, ratio, delta };
   }
 
+  /**
+   * Perceived fairness for AI judgment (not the player meter).
+   * Formula: perceivedValue(item) = listedCost × desireMultiplier
+   *          ratio = Σ perceived(playerOffer) / Σ perceived(aiOffer)
+   * Desire multipliers default to 1.0; rotation secrets may be 1.15–1.40 or 0.60–0.85.
+   * Higher ratio → better for the AI. Raw calculateFairness stays for the HUD meter.
+   *
+   * @returns {{ playerOfferValue: number, aiOfferValue: number, ratio: number, delta: number }}
+   */
+  function calculatePerceivedFairness(playerOfferItems, aiOfferItems) {
+    const playerOfferValue = perceivedInventoryValue(playerOfferItems || []);
+    const aiOfferValue = perceivedInventoryValue(aiOfferItems || []);
+    const delta = aiOfferValue - playerOfferValue;
+
+    let ratio;
+    if (playerOfferValue === 0 && aiOfferValue === 0) {
+      ratio = 1;
+    } else if (aiOfferValue === 0) {
+      ratio = Infinity;
+    } else {
+      ratio = playerOfferValue / aiOfferValue;
+    }
+
+    return { playerOfferValue, aiOfferValue, ratio, delta };
+  }
+
   function acceptThreshold() {
-    return RATIO_ACCEPT_BASE + AI_PERSONALITY;
+    return RATIO_ACCEPT_BASE + state.aiPersonality;
   }
 
   function declineThreshold() {
-    return Math.max(0.5, RATIO_DECLINE_BASE - AI_PERSONALITY);
+    return Math.max(0.5, RATIO_DECLINE_BASE - state.aiPersonality);
   }
 
   /**
-   * Decide how the AI feels about the current trade.
+   * Decide how the AI feels about the current trade using perceived values.
+   * @param {object[]} playerOfferItems
+   * @param {object[]} aiOfferItems
+   * @param {{ forceResolve?: boolean }} [opts] — when true (counter cap), never return "counter"
    * @returns {"accept"|"counter"|"decline"}
    */
-  function aiEvaluateTrade(playerOfferItems, aiOfferItems) {
-    const { ratio, playerOfferValue, aiOfferValue } = calculateFairness(
+  function aiEvaluateTrade(playerOfferItems, aiOfferItems, opts) {
+    const forceResolve = !!(opts && opts.forceResolve);
+    const { ratio, playerOfferValue, aiOfferValue } = calculatePerceivedFairness(
       playerOfferItems,
       aiOfferItems
     );
 
     if (playerOfferValue === 0 && aiOfferValue === 0) {
-      return "counter";
+      return forceResolve ? "decline" : "counter";
     }
 
     // Player offering nothing while AI has items on the table → decline
@@ -535,24 +865,31 @@
 
     // AI offering nothing while player put items up → accept lean (free gift) or counter
     if (aiOfferValue === 0) {
+      if (forceResolve) return "accept";
       return Math.random() < 0.85 ? "accept" : "counter";
     }
 
     const acceptAt = acceptThreshold();
     const declineAt = declineThreshold();
+    const mid = (acceptAt + declineAt) / 2;
 
-    // Fair-to-AI-favorable: ~80% accept, ~20% still counter for a bit more
+    let decision;
     if (ratio >= acceptAt) {
-      return Math.random() < 0.8 ? "accept" : "counter";
+      // Fair-to-AI-favorable: ~80% accept, ~20% still counter for a bit more
+      decision = Math.random() < 0.8 ? "accept" : "counter";
+    } else if (ratio < declineAt) {
+      decision = "decline";
+    } else {
+      // Close band — lean counter
+      decision = "counter";
     }
 
-    // Heavily favors player
-    if (ratio < declineAt) {
-      return "decline";
+    // Hard cap: after enough consecutive counters, resolve to accept or decline only
+    if (forceResolve && decision === "counter") {
+      decision = ratio >= mid ? "accept" : "decline";
     }
 
-    // Close band — lean counter
-    return "counter";
+    return decision;
   }
 
   function updateHud() {
@@ -903,6 +1240,7 @@
       setAiStatus("", null);
       hideAiSpeech();
       state.lastDecision = null;
+      resetAiCounterStreak();
       return;
     }
 
@@ -917,17 +1255,17 @@
 
   /**
    * Pick a small counter adjustment: add the cheapest useful inventory item,
-   * or remove the cheapest offer item — whichever closes fairness better with
-   * the smaller absolute diamond change.
+   * or remove the cheapest offer item — whichever closes perceived fairness better
+   * with the smaller absolute diamond change.
    */
   function applyAiCounter() {
-    const before = calculateFairness(state.offer, state.aiOffer);
+    const before = calculatePerceivedFairness(state.offer, state.aiOffer);
     const candidates = [];
 
     for (let i = 0; i < state.aiInventory.length; i++) {
       const item = state.aiInventory[i];
       const trialOffer = state.aiOffer.concat([item]);
-      const after = calculateFairness(state.offer, trialOffer);
+      const after = calculatePerceivedFairness(state.offer, trialOffer);
       candidates.push({
         kind: "add",
         index: i,
@@ -941,7 +1279,7 @@
     for (let i = 0; i < state.aiOffer.length; i++) {
       const item = state.aiOffer[i];
       const trialOffer = state.aiOffer.slice(0, i).concat(state.aiOffer.slice(i + 1));
-      const after = calculateFairness(state.offer, trialOffer);
+      const after = calculatePerceivedFairness(state.offer, trialOffer);
       candidates.push({
         kind: "remove",
         index: i,
@@ -960,6 +1298,7 @@
     if (best.kind === "add") {
       const [item] = state.aiInventory.splice(best.index, 1);
       state.aiOffer.push(item);
+      maybeSpeakDesireCue(item);
     } else {
       const [item] = state.aiOffer.splice(best.index, 1);
       state.aiInventory.push(item);
@@ -983,8 +1322,8 @@
 
   /**
    * Player "Add more" nudge: AI may add one inventory item to Their Offer
-   * if the resulting deal is still reasonable for the AI.
-   * @returns {boolean} whether an item was added
+   * if the resulting deal is still reasonable for the AI (perceived fairness).
+   * @returns {object|false} added item, or false
    */
   function tryAiAddMore() {
     if (!state.aiInventory.length) return false;
@@ -997,7 +1336,7 @@
     for (let i = 0; i < state.aiInventory.length; i++) {
       const item = state.aiInventory[i];
       const trialOffer = state.aiOffer.concat([item]);
-      const after = calculateFairness(state.offer, trialOffer);
+      const after = calculatePerceivedFairness(state.offer, trialOffer);
       const finiteRatio = Number.isFinite(after.ratio) ? after.ratio : 0;
 
       // Adding always lowers ratio (AI gives more). Allow only if still not too unfair.
@@ -1010,17 +1349,21 @@
         item,
         cost: item.cost,
         ratio: finiteRatio,
+        // Prefer giving away undervalued items when sweetening
+        desire: getDesireMultiplier(item),
       });
     }
 
     if (!candidates.length) return false;
 
-    // Prefer cheapest add that still keeps ratio reasonable
-    candidates.sort((a, b) => a.cost - b.cost || b.ratio - a.ratio);
+    // Prefer cheapest / most undervalued add that still keeps ratio reasonable
+    candidates.sort(
+      (a, b) => a.desire - b.desire || a.cost - b.cost || b.ratio - a.ratio
+    );
     const best = candidates[0];
     const [item] = state.aiInventory.splice(best.index, 1);
     state.aiOffer.push(item);
-    return true;
+    return item;
   }
 
   function runAiEvaluation(gen) {
@@ -1030,7 +1373,8 @@
       return;
     }
 
-    const decision = aiEvaluateTrade(state.offer, state.aiOffer);
+    const forceResolve = state.consecutiveAiCounters >= AI_COUNTER_CAP;
+    const decision = aiEvaluateTrade(state.offer, state.aiOffer, { forceResolve });
     state.lastDecision = decision;
 
     if (decision === "accept") {
@@ -1053,6 +1397,7 @@
       if (gen !== evalGeneration || state.locked) return;
 
       const changed = applyAiCounter();
+      if (changed) noteAiCounterApplied();
       assertOwnership("aiCounter");
       renderAll();
 
@@ -1089,7 +1434,12 @@
     const high = Math.round(TYPICAL_OPENING_ASK * 1.0);
     const target = low + Math.floor(Math.random() * (high - low + 1));
 
-    const pool = state.aiInventory.slice().sort((a, b) => a.cost - b.cost);
+    const pool = state.aiInventory.slice().sort((a, b) => {
+      // Prefer putting undervalued items on the table (AI is happy to part with them)
+      const desireDiff = getDesireMultiplier(a) - getDesireMultiplier(b);
+      if (Math.abs(desireDiff) > 0.05) return desireDiff;
+      return a.cost - b.cost;
+    });
     const picked = [];
     let total = 0;
     const maxItems = 1 + Math.floor(Math.random() * 3); // 1–3
@@ -1128,8 +1478,22 @@
     state.aiOffer = state.aiOffer.concat(picked);
     state.openingDone = true;
     state.locked = false;
+    resetAiCounterStreak();
 
     setAiStatus("AI is waiting for your offer", "thinking");
+    if (state.pendingCaughtSpeech) {
+      showAiSpeech(state.pendingCaughtSpeech);
+      state.pendingCaughtSpeech = null;
+    } else {
+      // Subtle desire cue on the first item that yields a line (truthful or herring)
+      for (const item of picked) {
+        const openingCue = desireCueForItem(item);
+        if (openingCue) {
+          showAiSpeech(openingCue);
+          break;
+        }
+      }
+    }
     assertOwnership("openingOffer");
     renderAll();
   }
@@ -1141,6 +1505,7 @@
     state.openingDone = false;
     state.lastDecision = null;
     state.locked = true;
+    resetAiCounterStreak();
     hideAiSpeech();
     setAiStatus("AI is preparing an offer…", "thinking");
     updateActionButtons();
@@ -1170,6 +1535,7 @@
     const giving = state.offer.slice();
     const receiving = state.aiOffer.slice();
     const receivedIds = receiving.map((i) => i.instanceId);
+    const { delta: rawDelta } = calculateFairness(giving, receiving);
 
     // Player offer → AI inventory; AI offer → player inventory
     state.aiInventory = state.aiInventory.concat(giving);
@@ -1178,6 +1544,10 @@
     state.aiOffer = [];
     state.justReceivedIds = new Set(receivedIds);
     state.tradesCompleted += 1;
+    state.desireTradesSinceRotation += 1;
+    resetAiCounterStreak();
+    noteProfitableFarmPairing(giving, receiving, rawDelta);
+    maybeRotateDesires();
     assertOwnership("executeTradeSwap");
   }
 
@@ -1210,6 +1580,7 @@
   function handleAcceptCounter() {
     playSfx("counter");
     const changed = applyAiCounter();
+    if (changed) noteAiCounterApplied();
     assertOwnership("acceptCounter");
     renderAll();
 
@@ -1278,8 +1649,10 @@
         return;
       }
 
-      const decision = aiEvaluateTrade(playerOffer, aiOffer);
+      const forceResolve = state.consecutiveAiCounters >= AI_COUNTER_CAP;
+      const decision = aiEvaluateTrade(playerOffer, aiOffer, { forceResolve });
       state.lastDecision = decision;
+      tickCaughtOnRound();
 
       if (decision === "accept") {
         finishAcceptedTrade();
@@ -1301,6 +1674,7 @@
     state.aiInventory = state.aiInventory.concat(state.aiOffer);
     state.offer = [];
     state.aiOffer = [];
+    resetAiCounterStreak();
     assertOwnership("returnOffers");
   }
 
@@ -1342,7 +1716,8 @@
     if (added) {
       playSfx("counter");
       setAiStatus("AI sweetened the offer", "counter");
-      showAiSpeech("Fine — I'll add a little more.");
+      const cue = desireCueForItem(added);
+      showAiSpeech(cue || "Fine — I'll add a little more.");
       assertOwnership("playerCounter");
       renderAll();
       // Re-evaluate if player already has items on the table
@@ -1367,16 +1742,20 @@
     if (found.list === "inventory") {
       const [item] = state.inventory.splice(found.index, 1);
       state.offer.push(item);
+      state.lastMovedId = instanceId;
+      playSfx("place");
+      hideAiSpeech();
+      maybeSpeakDesireCue(item);
     } else if (found.list === "offer") {
       const [item] = state.offer.splice(found.index, 1);
       state.inventory.push(item);
+      state.lastMovedId = instanceId;
+      playSfx("place");
+      hideAiSpeech();
     } else {
       return;
     }
 
-    state.lastMovedId = instanceId;
-    playSfx("place");
-    hideAiSpeech();
     assertOwnership("cardMove");
     renderAll();
     scheduleAiEvaluation();
@@ -1404,6 +1783,8 @@
     }
 
     state.secondsLeft -= 1;
+    state.desireSecSinceRotation += 1;
+    maybeRotateDesires();
     updateHud();
   }
 
@@ -1606,6 +1987,11 @@
     state.offer = [];
     state.aiInventory = window.generateAIInventory();
     state.aiOffer = [];
+    state.aiPersonality = rollPersonality();
+    rollAiDesires(state.aiInventory.concat(state.aiOffer));
+    resetDesireRotationTriggers();
+    clearFarmTracking();
+    resetAiCounterStreak();
     state.lastDecision = null;
     state.openingDone = false;
     state.tradesCompleted = 0;
@@ -1660,6 +2046,11 @@
     state.offer = [];
     state.aiInventory = [];
     state.aiOffer = [];
+    state.aiDesire = new Map();
+    state.aiPersonality = 0.05;
+    resetDesireRotationTriggers();
+    clearFarmTracking();
+    resetAiCounterStreak();
     state.lastDecision = null;
     state.openingDone = false;
     state.tradesCompleted = 0;
@@ -1695,7 +2086,10 @@
 
   // Expose for debugging / verification
   window.calculateFairness = calculateFairness;
+  window.calculatePerceivedFairness = calculatePerceivedFairness;
   window.aiEvaluateTrade = aiEvaluateTrade;
+  window.rollAiDesires = rollAiDesires;
+  window.getDesireMultiplier = getDesireMultiplier;
   window.endSession = endSession;
   window.returnOffersToInventories = returnOffersToInventories;
   window.__fidgetState = state;
