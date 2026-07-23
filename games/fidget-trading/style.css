@@ -1,0 +1,353 @@
+/* Fidget Trading — Part 1: board, items, click-to-offer */
+
+:root {
+  --ft-gold: #d4b56a;
+  --ft-gold-soft: #e8d5a3;
+  --ft-honey: #c9a24a;
+  --ft-tier-normal: #9a93b0;
+  --ft-tier-glitter: #d4b56a;
+  --ft-tier-butter: #c9a24a;
+}
+
+.fidget-shell {
+  max-width: 42rem;
+  margin: 0 auto;
+}
+
+.fidget-hud .stat-row {
+  flex: 1;
+  justify-content: space-between;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Trade table                                                                */
+/* -------------------------------------------------------------------------- */
+
+.fidget-shell .game-header,
+.page-main--game .game-header {
+  margin-bottom: var(--space-3);
+}
+
+.fidget-shell .lede {
+  margin-bottom: 0;
+}
+
+.fidget-hud {
+  margin-bottom: var(--space-3);
+}
+
+.fidget-table {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  margin-bottom: var(--space-4);
+  background:
+    linear-gradient(180deg, rgba(185, 169, 214, 0.18), transparent 40%),
+    linear-gradient(0deg, rgba(127, 199, 196, 0.14), transparent 38%),
+    var(--surface);
+}
+
+.fidget-table__divider {
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--lavender) 55%, var(--teal)),
+    transparent
+  );
+  opacity: 0.7;
+}
+
+.offer-zone {
+  position: relative;
+  min-height: 6.25rem;
+}
+
+.offer-zone__label {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-align: center;
+  color: var(--ink);
+}
+
+.offer-shelf {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  align-items: stretch;
+  gap: var(--space-2);
+  min-height: 5rem;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--cream) 88%, var(--lavender-soft));
+  box-shadow: var(--shadow-inset);
+}
+
+.offer-zone__empty {
+  position: absolute;
+  left: 50%;
+  top: 58%;
+  transform: translate(-50%, -50%);
+  margin: 0;
+  pointer-events: none;
+  font-size: 0.85rem;
+  white-space: nowrap;
+}
+
+.offer-zone__empty.is-hidden {
+  display: none;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Inventory tray                                                             */
+/* -------------------------------------------------------------------------- */
+
+.inventory-panel {
+  margin-bottom: var(--space-4);
+}
+
+.inventory-panel__label {
+  margin: 0 0 var(--space-3);
+  font-family: var(--font-display);
+  font-size: 1rem;
+  font-weight: 700;
+  color: var(--ink);
+}
+
+.inventory-tray {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.25rem, 1fr));
+  gap: var(--space-2);
+  max-height: 14rem;
+  overflow-y: auto;
+  padding: var(--space-3);
+  border-radius: var(--radius-lg);
+  background: color-mix(in srgb, var(--cream) 70%, white);
+  box-shadow: var(--shadow-inset);
+}
+
+.inventory-tray:empty::after {
+  content: "Nothing left in your tray — all items are on the table.";
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--ink-faint);
+  font-size: 0.9rem;
+  padding: var(--space-4);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Item cards                                                                 */
+/* -------------------------------------------------------------------------- */
+
+.fidget-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  width: 5.5rem;
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border: 2.5px solid var(--ft-tier-normal);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast);
+  animation: fidget-pop 280ms cubic-bezier(0.34, 1.45, 0.64, 1) both;
+}
+
+.fidget-card:hover {
+  transform: translateY(-2px) scale(1.03);
+  box-shadow: var(--shadow-lift);
+}
+
+.fidget-card:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 2px;
+}
+
+.fidget-card--normal {
+  border-color: var(--ft-tier-normal);
+}
+
+.fidget-card--glitter {
+  border-color: var(--ft-tier-glitter);
+  background:
+    linear-gradient(145deg, rgba(232, 213, 163, 0.35), transparent 55%),
+    var(--surface);
+  box-shadow:
+    var(--shadow-soft),
+    0 0 0 1px color-mix(in srgb, var(--ft-gold) 40%, transparent);
+}
+
+.fidget-card--butter {
+  border-color: var(--ft-tier-butter);
+  background:
+    linear-gradient(160deg, rgba(245, 239, 227, 0.9), rgba(232, 213, 163, 0.45)),
+    var(--surface);
+}
+
+.fidget-card__art {
+  position: relative;
+  width: 3.5rem;
+  height: 3.5rem;
+  flex-shrink: 0;
+}
+
+.fidget-card__svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.fidget-card__name {
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fidget-card__tier {
+  font-size: 0.6rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+/* Glitter: sparkle dots + shimmer sweep clipped to blob */
+.fidget-blob {
+  position: absolute;
+  inset: 0;
+}
+
+.fidget-blob__face {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.fidget-blob__sparkle {
+  position: absolute;
+  inset: 8%;
+  z-index: 2;
+  border-radius: 50%;
+  pointer-events: none;
+  background-image: radial-gradient(circle, rgba(255, 255, 255, 0.95) 1.2px, transparent 1.4px);
+  background-size: 9px 9px;
+  background-position: 0 0, 4px 5px;
+  opacity: 0.85;
+  mix-blend-mode: soft-light;
+  -webkit-mask-image: radial-gradient(ellipse 70% 65% at 50% 55%, #000 55%, transparent 72%);
+  mask-image: radial-gradient(ellipse 70% 65% at 50% 55%, #000 55%, transparent 72%);
+}
+
+.fidget-blob__shimmer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+  background: linear-gradient(
+    115deg,
+    transparent 30%,
+    rgba(255, 255, 255, 0.55) 48%,
+    transparent 62%
+  );
+  background-size: 200% 100%;
+  animation: fidget-shimmer 2.4s ease-in-out infinite;
+  -webkit-mask-image: radial-gradient(ellipse 68% 62% at 50% 54%, #000 58%, transparent 74%);
+  mask-image: radial-gradient(ellipse 68% 62% at 50% 54%, #000 58%, transparent 74%);
+}
+
+/* Butter: glossy highlight + melt wobble */
+.fidget-blob--butter .fidget-blob__face {
+  animation: fidget-melt 3.6s ease-in-out infinite;
+  transform-origin: 50% 70%;
+}
+
+.fidget-blob__gloss {
+  position: absolute;
+  left: 22%;
+  top: 18%;
+  width: 38%;
+  height: 28%;
+  z-index: 2;
+  pointer-events: none;
+  border-radius: 50%;
+  background: linear-gradient(
+    160deg,
+    rgba(255, 255, 255, 0.75),
+    rgba(255, 255, 255, 0.15) 55%,
+    transparent
+  );
+  filter: blur(0.3px);
+}
+
+/* Offer shelf cards a bit larger for shelf feel */
+.offer-shelf .fidget-card {
+  width: 5.75rem;
+}
+
+@keyframes fidget-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes fidget-shimmer {
+  0% {
+    background-position: 120% 0;
+  }
+  100% {
+    background-position: -80% 0;
+  }
+}
+
+@keyframes fidget-melt {
+  0%,
+  100% {
+    transform: scale(1, 1) translateY(0);
+  }
+  40% {
+    transform: scale(1.04, 0.94) translateY(1px);
+  }
+  70% {
+    transform: scale(0.97, 1.04) translateY(-1px);
+  }
+}
+
+@media (max-width: 520px) {
+  .fidget-table {
+    padding: var(--space-4);
+  }
+
+  .offer-zone__empty {
+    white-space: normal;
+    text-align: center;
+    max-width: 90%;
+  }
+
+  .inventory-tray {
+    max-height: 12rem;
+  }
+}

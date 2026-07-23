@@ -48,6 +48,11 @@ All asset paths are relative to the repo root so root-based Pages hosting works 
     │   ├── style.css
     │   ├── script.js
     │   └── levels.js
+    ├── fidget-trading/
+    │   ├── index.html
+    │   ├── style.css
+    │   ├── script.js
+    │   └── items.js
     ├── tic-tac-toe/
     ├── whack-a-mole/          # UI title: "Peek-a-Boo"
     └── crownward/             # Side-scroller path to the Grand Castle
@@ -130,6 +135,7 @@ Refresh the hub — your card should appear. Existing games stay untouched.
 | **Tic-Tac-Toe** | `games/tic-tac-toe` | 2-player or vs AI, round scores saved |
 | **Peek-a-Boo** | `games/whack-a-mole` | Timed tap game, difficulty ramps, high score saved |
 | **Crownward** | `games/crownward` | Side-scroller to the Grand Castle; 30:00 timer, checkpoints, analytics in localStorage |
+| **Fidget Trading** | `games/fidget-trading` | Trade squishies with the AI; Part 1: board, inventories, click-to-offer |
 
 ## Architecture notes
 
