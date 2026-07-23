@@ -124,6 +124,24 @@ const GAMES_REGISTRY = [
       </svg>
     `,
   },
+  {
+    id: "fidget-trading",
+    name: "Fidget Trading",
+    description: "Trade squishies with the AI — build the best inventory before time runs out.",
+    path: "games/fidget-trading/index.html",
+    iconSvg: `
+      <svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+        <rect width="64" height="64" rx="14" fill="#E8B4B8"/>
+        <ellipse cx="32" cy="36" rx="20" ry="18" fill="#F5EFE3"/>
+        <ellipse cx="32" cy="34" rx="16" ry="14" fill="#7FC7C4"/>
+        <circle cx="26" cy="32" r="2.5" fill="#3A3159"/>
+        <circle cx="38" cy="32" r="2.5" fill="#3A3159"/>
+        <path d="M27 40 Q32 44 37 40" fill="none" stroke="#3A3159" stroke-width="2" stroke-linecap="round"/>
+        <circle cx="44" cy="22" r="3" fill="#B9A9D6" opacity="0.9"/>
+        <circle cx="20" cy="24" r="2.2" fill="#F5EFE3" opacity="0.85"/>
+      </svg>
+    `,
+  },
 ];
 
 /* Expose for non-module script tags */
