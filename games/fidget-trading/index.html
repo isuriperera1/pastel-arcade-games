@@ -18,140 +18,175 @@
         </header>
 
         <div class="game-shell fidget-shell">
-          <div class="fidget-toolbar">
-            <button
-              type="button"
-              class="btn btn--ghost btn--sm fidget-mute-btn"
-              id="btn-mute"
-              aria-pressed="false"
-              aria-label="Mute sound"
-              title="Mute sound"
-            >
-              <span class="fidget-mute-btn__icon" aria-hidden="true">♪</span>
-              <span class="fidget-mute-btn__label" id="mute-label">Sound on</span>
-            </button>
-            <button
-              type="button"
-              class="btn btn--ghost btn--sm fidget-end-btn"
-              id="btn-end-trading"
-              title="End trading session"
-            >
-              End Trading
-            </button>
-          </div>
-
-          <div class="hud fidget-hud">
-            <div class="stat-row">
-              <div class="stat">
-                <span class="stat__label">Time</span>
-                <span class="stat__value" id="hud-timer">10:00</span>
-              </div>
-              <div class="stat">
-                <span class="stat__label">Your inventory value</span>
-                <span class="stat__value" id="hud-value">0 diamonds</span>
-              </div>
-              <div class="stat">
-                <span class="stat__label">Trades</span>
-                <span class="stat__value" id="hud-trades">0 trades made</span>
-              </div>
-            </div>
-            <p class="value-flash" id="value-flash" hidden aria-live="polite"></p>
-          </div>
-
-          <div class="fidget-table card" aria-label="Trade table">
-            <section class="offer-zone offer-zone--ai" aria-labelledby="their-offer-label">
-              <div class="offer-zone__header">
-                <h2 class="offer-zone__label" id="their-offer-label">Their Offer</h2>
-                <p class="ai-status" id="ai-status" aria-live="polite"></p>
-              </div>
-              <div class="ai-speech" id="ai-speech" hidden role="status" aria-live="polite">
-                <span class="ai-speech__text" id="ai-speech-text"></span>
-              </div>
-              <div
-                class="offer-shelf"
-                id="their-offer"
-                role="list"
-                aria-label="AI offer items"
-              ></div>
-              <p class="offer-zone__empty muted" id="their-offer-empty">Waiting for their offer…</p>
-            </section>
-
-            <div class="fairness-meter" id="fairness-meter" aria-live="polite">
-              <div class="fairness-meter__labels" aria-hidden="true">
-                <span>You favored</span>
-                <span>Even</span>
-                <span>AI favored</span>
-              </div>
-              <div class="fairness-meter__track" aria-hidden="true">
-                <div class="fairness-meter__fill" id="fairness-fill"></div>
-                <div class="fairness-meter__marker" id="fairness-marker"></div>
-                <span class="fairness-meter__tick fairness-meter__tick--center"></span>
-              </div>
-              <p class="fairness-meter__readout" id="fairness-readout">Add items to see fairness</p>
-            </div>
-
-            <section class="offer-zone" aria-labelledby="your-offer-label">
-              <h2 class="offer-zone__label" id="your-offer-label">Your Offer</h2>
-              <div
-                class="offer-shelf"
-                id="your-offer"
-                role="list"
-                aria-label="Your offer items"
-              ></div>
-              <p class="offer-zone__empty muted" id="your-offer-empty">
-                Tap an item below to place it here
+          <!-- Starting inventory selection (shown before trade) -->
+          <section
+            class="fidget-select"
+            id="select-screen"
+            aria-labelledby="select-title"
+            aria-describedby="select-budget select-summary"
+          >
+            <header class="fidget-select__header">
+              <h2 class="fidget-select__title" id="select-title">Choose Your Squishies</h2>
+              <p class="fidget-select__budget" id="select-budget" aria-live="polite">
+                <span class="fidget-select__budget-label">Diamond budget</span>
+                <span class="fidget-select__budget-value" id="select-diamonds-left">20 diamonds left</span>
               </p>
-            </section>
-          </div>
+            </header>
 
-          <div class="trade-actions" role="group" aria-label="Trade actions">
-            <button
-              type="button"
-              class="trade-btn trade-btn--accept"
-              id="btn-accept"
-              aria-label="Accept trade"
-              title="Accept"
-            >
-              <span class="trade-btn__icon" aria-hidden="true">✓</span>
-              <span class="trade-btn__label">Accept</span>
-            </button>
-            <button
-              type="button"
-              class="trade-btn trade-btn--decline"
-              id="btn-decline"
-              aria-label="Decline trade"
-              title="Decline"
-            >
-              <span class="trade-btn__icon" aria-hidden="true">✕</span>
-              <span class="trade-btn__label">Decline</span>
-            </button>
-            <button
-              type="button"
-              class="trade-btn trade-btn--counter"
-              id="btn-counter"
-              aria-label="Ask AI to add more"
-              title="Counter / Add More"
-            >
-              <span class="trade-btn__icon" aria-hidden="true">+</span>
-              <span class="trade-btn__label">Add more</span>
-            </button>
-          </div>
-          <p class="trade-action-hint muted text-center" id="trade-action-hint" hidden></p>
+            <div class="fidget-select__scroll" id="select-catalog" tabindex="-1"></div>
 
-          <section class="inventory-panel" aria-labelledby="inventory-label">
-            <h2 class="inventory-panel__label" id="inventory-label">Your Inventory</h2>
-            <div
-              class="inventory-tray"
-              id="player-inventory"
-              role="list"
-              aria-label="Owned fidgets"
-            ></div>
+            <footer class="fidget-select__footer">
+              <p class="fidget-select__summary" id="select-summary" aria-live="polite">
+                0 squishies selected — 0/20 diamonds used
+              </p>
+              <p class="fidget-select__tip" id="select-tip" hidden aria-live="polite"></p>
+              <button
+                type="button"
+                class="btn btn--primary fidget-select__start"
+                id="btn-start-trading"
+                disabled
+              >
+                Start Trading
+              </button>
+            </footer>
           </section>
 
-          <p class="muted text-center hint">
-            Tap inventory items to offer them. Tap an offer to take it back. Accept locks in the swap —
-            Decline clears the table — Add more nudges the AI to sweeten their offer.
-          </p>
+          <div class="fidget-trade-ui" id="trade-ui" hidden>
+            <div class="fidget-toolbar">
+              <button
+                type="button"
+                class="btn btn--ghost btn--sm fidget-mute-btn"
+                id="btn-mute"
+                aria-pressed="false"
+                aria-label="Mute sound"
+                title="Mute sound"
+              >
+                <span class="fidget-mute-btn__icon" aria-hidden="true">♪</span>
+                <span class="fidget-mute-btn__label" id="mute-label">Sound on</span>
+              </button>
+              <button
+                type="button"
+                class="btn btn--ghost btn--sm fidget-end-btn"
+                id="btn-end-trading"
+                title="End trading session"
+              >
+                End Trading
+              </button>
+            </div>
+
+            <div class="hud fidget-hud">
+              <div class="stat-row">
+                <div class="stat">
+                  <span class="stat__label">Time</span>
+                  <span class="stat__value" id="hud-timer">10:00</span>
+                </div>
+                <div class="stat">
+                  <span class="stat__label">Your inventory value</span>
+                  <span class="stat__value" id="hud-value">0 diamonds</span>
+                </div>
+                <div class="stat">
+                  <span class="stat__label">Trades</span>
+                  <span class="stat__value" id="hud-trades">0 trades made</span>
+                </div>
+              </div>
+              <p class="value-flash" id="value-flash" hidden aria-live="polite"></p>
+            </div>
+
+            <div class="fidget-table card" aria-label="Trade table">
+              <section class="offer-zone offer-zone--ai" aria-labelledby="their-offer-label">
+                <div class="offer-zone__header">
+                  <h2 class="offer-zone__label" id="their-offer-label">Their Offer</h2>
+                  <p class="ai-status" id="ai-status" aria-live="polite"></p>
+                </div>
+                <div class="ai-speech" id="ai-speech" hidden role="status" aria-live="polite">
+                  <span class="ai-speech__text" id="ai-speech-text"></span>
+                </div>
+                <div
+                  class="offer-shelf"
+                  id="their-offer"
+                  role="list"
+                  aria-label="AI offer items"
+                ></div>
+                <p class="offer-zone__empty muted" id="their-offer-empty">Waiting for their offer…</p>
+              </section>
+
+              <div class="fairness-meter" id="fairness-meter" aria-live="polite">
+                <div class="fairness-meter__labels" aria-hidden="true">
+                  <span>You favored</span>
+                  <span>Even</span>
+                  <span>AI favored</span>
+                </div>
+                <div class="fairness-meter__track" aria-hidden="true">
+                  <div class="fairness-meter__fill" id="fairness-fill"></div>
+                  <div class="fairness-meter__marker" id="fairness-marker"></div>
+                  <span class="fairness-meter__tick fairness-meter__tick--center"></span>
+                </div>
+                <p class="fairness-meter__readout" id="fairness-readout">Add items to see fairness</p>
+              </div>
+
+              <section class="offer-zone" aria-labelledby="your-offer-label">
+                <h2 class="offer-zone__label" id="your-offer-label">Your Offer</h2>
+                <div
+                  class="offer-shelf"
+                  id="your-offer"
+                  role="list"
+                  aria-label="Your offer items"
+                ></div>
+                <p class="offer-zone__empty muted" id="your-offer-empty">
+                  Tap an item below to place it here
+                </p>
+              </section>
+            </div>
+
+            <div class="trade-actions" role="group" aria-label="Trade actions">
+              <button
+                type="button"
+                class="trade-btn trade-btn--accept"
+                id="btn-accept"
+                aria-label="Accept trade"
+                title="Accept"
+              >
+                <span class="trade-btn__icon" aria-hidden="true">✓</span>
+                <span class="trade-btn__label">Accept</span>
+              </button>
+              <button
+                type="button"
+                class="trade-btn trade-btn--decline"
+                id="btn-decline"
+                aria-label="Decline trade"
+                title="Decline"
+              >
+                <span class="trade-btn__icon" aria-hidden="true">✕</span>
+                <span class="trade-btn__label">Decline</span>
+              </button>
+              <button
+                type="button"
+                class="trade-btn trade-btn--counter"
+                id="btn-counter"
+                aria-label="Ask AI to add more"
+                title="Counter / Add More"
+              >
+                <span class="trade-btn__icon" aria-hidden="true">+</span>
+                <span class="trade-btn__label">Add more</span>
+              </button>
+            </div>
+            <p class="trade-action-hint muted text-center" id="trade-action-hint" hidden></p>
+
+            <section class="inventory-panel" aria-labelledby="inventory-label">
+              <h2 class="inventory-panel__label" id="inventory-label">Your Inventory</h2>
+              <div
+                class="inventory-tray"
+                id="player-inventory"
+                role="list"
+                aria-label="Owned fidgets"
+              ></div>
+            </section>
+
+            <p class="muted text-center hint">
+              Tap inventory items to offer them. Tap an offer to take it back. Accept asks the AI to
+              decide — Decline clears the table — Add more nudges the AI to sweeten their offer.
+            </p>
+          </div>
         </div>
       </main>
     </div>
