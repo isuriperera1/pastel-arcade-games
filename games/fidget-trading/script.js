@@ -1,7 +1,6 @@
 /**
- * Fidget Trading — Parts 1–4
- * Board, inventories, click-to-offer, fairness meter, AI reactions,
- * Accept / Decline / Counter, timer enforcement & end-of-session.
+ * Fidget Trading — polished trade loop
+ * Board, inventories, AI, Accept / Decline / Counter, timer, SFX, a11y.
  */
 
 (function () {
@@ -24,9 +23,11 @@
   const AI_OPENING_DELAY_MS = 1000;
   const AI_EVAL_DEBOUNCE_MS = 800;
   const AI_THINK_PAUSE_MS = 1500;
+  const AI_ACCEPT_DECIDE_MS = 1200;
   const AI_SPEECH_MS = 3200;
   const SWAP_ANIM_MS = 560;
   const RETURN_ANIM_MS = 420;
+  const SQUISH_MS = 180;
   const RECEIVED_GLOW_MS = 1000;
   const VALUE_FLASH_MS = 1100;
   const POST_TRADE_OPENING_DELAY_MS = 900;
@@ -34,7 +35,13 @@
   const CONFETTI_MIN = 40;
   const CONFETTI_MAX = 60;
   const CONFETTI_DURATION_MS = 2600;
+  const MUTE_STORAGE_KEY = "arcade-games-fidget-muted";
   const TIER_ORDER = { normal: 0, glitter: 1, butter: 2 };
+  const TIER_SELECT_META = [
+    { tier: "normal", label: "Normal — 2 💎" },
+    { tier: "glitter", label: "Glitter — 5 💎" },
+    { tier: "butter", label: "Butter — 9 💎" },
+  ];
   const CONFETTI_COLORS = [
     "var(--teal)",
     "var(--lavender)",
@@ -43,6 +50,10 @@
   ];
   const prefersReducedMotion = () =>
     window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+
+  function animMs(fullMs) {
+    return prefersReducedMotion() ? 0 : fullMs;
+  }
 
   /**
    * Fairness ratio = playerOfferValue / aiOfferValue
@@ -55,6 +66,13 @@
   const RATIO_DECLINE_BASE = 0.75;
 
   const els = {
+    selectScreen: document.getElementById("select-screen"),
+    selectCatalog: document.getElementById("select-catalog"),
+    selectDiamondsLeft: document.getElementById("select-diamonds-left"),
+    selectSummary: document.getElementById("select-summary"),
+    selectTip: document.getElementById("select-tip"),
+    btnStartTrading: document.getElementById("btn-start-trading"),
+    tradeUi: document.getElementById("trade-ui"),
     timer: document.getElementById("hud-timer"),
     value: document.getElementById("hud-value"),
     trades: document.getElementById("hud-trades"),
@@ -74,6 +92,8 @@
     btnAccept: document.getElementById("btn-accept"),
     btnDecline: document.getElementById("btn-decline"),
     btnCounter: document.getElementById("btn-counter"),
+    btnMute: document.getElementById("btn-mute"),
+    muteLabel: document.getElementById("mute-label"),
     btnEndTrading: document.getElementById("btn-end-trading"),
     btnTradeAgain: document.getElementById("btn-trade-again"),
     actionHint: document.getElementById("trade-action-hint"),
@@ -86,7 +106,7 @@
     endInventory: document.getElementById("end-inventory"),
   };
 
-  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, startingValue: number, justReceivedIds: Set<string> }} */
+  /** @type {{ inventory: object[], offer: object[], aiInventory: object[], aiOffer: object[], secondsLeft: number, timerId: number|null, lastDecision: string|null, openingDone: boolean, tradesCompleted: number, locked: boolean, sessionEnded: boolean, selecting: boolean, selectedCatalogIds: Set<string>, startingValue: number, justReceivedIds: Set<string>, muted: boolean, lastMovedId: string|null }} */
   const state = {
     inventory: [],
     offer: [],
@@ -99,8 +119,12 @@
     tradesCompleted: 0,
     locked: false,
     sessionEnded: false,
+    selecting: true,
+    selectedCatalogIds: new Set(),
     startingValue: STARTING_BUDGET,
     justReceivedIds: new Set(),
+    muted: false,
+    lastMovedId: null,
   };
 
   let evalDebounceId = null;
@@ -112,8 +136,140 @@
   let glowTimeoutId = null;
   let swapTimeoutId = null;
   let returnTimeoutId = null;
+  let squishTimeoutId = null;
+  let acceptDecideTimeoutId = null;
   let evalGeneration = 0;
+  let acceptGeneration = 0;
   let audioCtx = null;
+
+  function loadMutePref() {
+    try {
+      return localStorage.getItem(MUTE_STORAGE_KEY) === "1";
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function saveMutePref(muted) {
+    try {
+      localStorage.setItem(MUTE_STORAGE_KEY, muted ? "1" : "0");
+    } catch (_) {
+      /* ignore quota / private mode */
+    }
+  }
+
+  function syncMuteUi() {
+    if (!els.btnMute) return;
+    els.btnMute.setAttribute("aria-pressed", state.muted ? "true" : "false");
+    els.btnMute.setAttribute("aria-label", state.muted ? "Unmute sound" : "Mute sound");
+    els.btnMute.title = state.muted ? "Unmute sound" : "Mute sound";
+    if (els.muteLabel) {
+      els.muteLabel.textContent = state.muted ? "Sound off" : "Sound on";
+    }
+  }
+
+  function ensureAudio() {
+    const Ctx = window.AudioContext || window.webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtx) audioCtx = new Ctx();
+    if (audioCtx.state === "suspended") {
+      audioCtx.resume().catch(() => {});
+    }
+    return audioCtx;
+  }
+
+  /**
+   * Lightweight Web Audio SFX (no external files).
+   * @param {"place"|"accept"|"decline"|"counter"} kind
+   */
+  function playSfx(kind) {
+    if (state.muted) return;
+    try {
+      const ctx = ensureAudio();
+      if (!ctx) return;
+      const t0 = ctx.currentTime;
+
+      if (kind === "place") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "triangle";
+        osc.frequency.setValueAtTime(420, t0);
+        osc.frequency.exponentialRampToValueAtTime(280, t0 + 0.08);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.06, t0 + 0.012);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.12);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.13);
+        return;
+      }
+
+      if (kind === "accept") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(740, t0);
+        osc.frequency.exponentialRampToValueAtTime(1180, t0 + 0.09);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.09, t0 + 0.02);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.3);
+        return;
+      }
+
+      if (kind === "decline") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(260, t0);
+        osc.frequency.exponentialRampToValueAtTime(210, t0 + 0.07);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.045, t0 + 0.01);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.1);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.11);
+        return;
+      }
+
+      if (kind === "counter") {
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(520, t0);
+        osc.frequency.setValueAtTime(640, t0 + 0.05);
+        osc.frequency.setValueAtTime(480, t0 + 0.1);
+        gain.gain.setValueAtTime(0.0001, t0);
+        gain.gain.exponentialRampToValueAtTime(0.05, t0 + 0.015);
+        gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.16);
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.start(t0);
+        osc.stop(t0 + 0.17);
+      }
+    } catch (_) {
+      /* silent if audio blocked */
+    }
+  }
+
+  function playTradeDing() {
+    playSfx("accept");
+  }
+
+  function toggleMute() {
+    state.muted = !state.muted;
+    saveMutePref(state.muted);
+    syncMuteUi();
+    if (!state.muted) {
+      ensureAudio();
+      playSfx("place");
+    }
+  }
 
   function formatTime(totalSec) {
     const m = Math.floor(totalSec / 60);
@@ -123,6 +279,197 @@
 
   function inventoryValue(items) {
     return items.reduce((sum, item) => sum + (item.cost || 0), 0);
+  }
+
+  function catalogById(id) {
+    const items = window.FIDGET_ITEMS || [];
+    return items.find((item) => item.id === id) || null;
+  }
+
+  function getSelectedDefs() {
+    const defs = [];
+    for (const id of state.selectedCatalogIds) {
+      const def = catalogById(id);
+      if (def) defs.push(def);
+    }
+    return defs;
+  }
+
+  function selectionSpent() {
+    return inventoryValue(getSelectedDefs());
+  }
+
+  function selectionDiamondsLeft() {
+    return STARTING_BUDGET - selectionSpent();
+  }
+
+  function selectionTipMessage(count, left) {
+    if (count === 0) return "";
+    if (left >= 5) {
+      return "You still have diamonds left — pick a few more!";
+    }
+    if (count <= 2 && left >= 2) {
+      return "You still have diamonds left — pick a few more!";
+    }
+    if (left >= 2 && count < 4) {
+      return "You still have diamonds left — pick a few more!";
+    }
+    return "";
+  }
+
+  function updateSelectionUi() {
+    const selected = getSelectedDefs();
+    const spent = inventoryValue(selected);
+    const left = STARTING_BUDGET - spent;
+    const count = selected.length;
+
+    if (els.selectDiamondsLeft) {
+      els.selectDiamondsLeft.textContent =
+        left === 1 ? "1 diamond left" : `${left} diamonds left`;
+    }
+    if (els.selectSummary) {
+      const noun = count === 1 ? "squishy" : "squishies";
+      els.selectSummary.textContent = `${count} ${noun} selected — ${spent}/${STARTING_BUDGET} diamonds used`;
+    }
+
+    const tip = selectionTipMessage(count, left);
+    if (els.selectTip) {
+      if (tip) {
+        els.selectTip.textContent = tip;
+        els.selectTip.hidden = false;
+      } else {
+        els.selectTip.textContent = "";
+        els.selectTip.hidden = true;
+      }
+    }
+
+    if (els.btnStartTrading) {
+      els.btnStartTrading.disabled = count < 1;
+    }
+
+    if (!els.selectCatalog) return;
+    const cards = els.selectCatalog.querySelectorAll(".fidget-select-card");
+    cards.forEach((card) => {
+      const id = card.dataset.catalogId;
+      const def = catalogById(id);
+      if (!def) return;
+      const isSelected = state.selectedCatalogIds.has(id);
+      const unaffordable = !isSelected && def.cost > left;
+      card.classList.toggle("is-selected", isSelected);
+      card.classList.toggle("is-unaffordable", unaffordable);
+      card.disabled = unaffordable;
+      card.setAttribute("aria-pressed", isSelected ? "true" : "false");
+      const costLabel = `${def.cost} diamond${def.cost === 1 ? "" : "s"}`;
+      if (isSelected) {
+        card.setAttribute(
+          "aria-label",
+          `${def.name}, ${def.tier} tier, ${costLabel}. Selected. Press Enter to deselect.`
+        );
+      } else if (unaffordable) {
+        card.setAttribute(
+          "aria-label",
+          `${def.name}, ${def.tier} tier, ${costLabel}. Unaffordable with remaining diamonds.`
+        );
+      } else {
+        card.setAttribute(
+          "aria-label",
+          `${def.name}, ${def.tier} tier, ${costLabel}. Press Enter to select.`
+        );
+      }
+    });
+  }
+
+  function toggleCatalogSelection(catalogId) {
+    if (!state.selecting) return;
+    const def = catalogById(catalogId);
+    if (!def) return;
+
+    if (state.selectedCatalogIds.has(catalogId)) {
+      state.selectedCatalogIds.delete(catalogId);
+      playSfx("place");
+      updateSelectionUi();
+      return;
+    }
+
+    if (def.cost > selectionDiamondsLeft()) return;
+
+    state.selectedCatalogIds.add(catalogId);
+    playSfx("place");
+    updateSelectionUi();
+  }
+
+  function createSelectCard(def) {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = `fidget-select-card fidget-card--${def.tier}`;
+    btn.dataset.catalogId = def.id;
+    btn.setAttribute("aria-pressed", "false");
+    btn.innerHTML = `
+      <span class="fidget-select-card__check" aria-hidden="true">✓</span>
+      <div class="fidget-select-card__art">${renderBlobArt(def)}</div>
+      <span class="fidget-select-card__name">${def.name}</span>
+      <span class="fidget-select-card__cost">${def.cost} 💎</span>
+    `;
+    btn.addEventListener("click", () => toggleCatalogSelection(def.id));
+    return btn;
+  }
+
+  function renderSelectCatalog() {
+    if (!els.selectCatalog) return;
+    els.selectCatalog.replaceChildren();
+    const catalog = window.FIDGET_ITEMS || [];
+
+    for (const meta of TIER_SELECT_META) {
+      const tierItems = catalog.filter((item) => item.tier === meta.tier);
+      if (!tierItems.length) continue;
+
+      const section = document.createElement("section");
+      section.className = "fidget-select__tier";
+      section.setAttribute("aria-label", meta.label);
+
+      const heading = document.createElement("h3");
+      heading.className = "fidget-select__tier-heading";
+      heading.textContent = meta.label;
+      section.appendChild(heading);
+
+      const grid = document.createElement("div");
+      grid.className = "fidget-select__grid";
+      grid.setAttribute("role", "group");
+      grid.setAttribute("aria-label", meta.label);
+      for (const def of tierItems) {
+        grid.appendChild(createSelectCard(def));
+      }
+      section.appendChild(grid);
+      els.selectCatalog.appendChild(section);
+    }
+
+    updateSelectionUi();
+  }
+
+  function showSelectScreen() {
+    state.selecting = true;
+    state.selectedCatalogIds = new Set();
+    if (els.selectScreen) els.selectScreen.hidden = false;
+    if (els.tradeUi) els.tradeUi.hidden = true;
+    renderSelectCatalog();
+    // Focus first selectable card for keyboard users
+    const firstCard = els.selectCatalog && els.selectCatalog.querySelector(".fidget-select-card");
+    if (firstCard) {
+      firstCard.focus();
+    } else if (els.btnStartTrading) {
+      els.btnStartTrading.focus();
+    }
+  }
+
+  function hideSelectScreen() {
+    state.selecting = false;
+    if (els.selectScreen) els.selectScreen.hidden = true;
+    if (els.tradeUi) els.tradeUi.hidden = false;
+  }
+
+  function buildInventoryFromSelection() {
+    const clone = window.cloneFidgetItem;
+    return getSelectedDefs().map((def) => (clone ? clone(def) : { ...def, colorway: { ...def.colorway } }));
   }
 
   function playerOwnedValue() {
@@ -233,14 +580,15 @@
   }
 
   function updateActionButtons() {
-    const busy = state.locked || !state.openingDone || state.sessionEnded;
+    const busy =
+      state.locked || !state.openingDone || state.sessionEnded || state.selecting;
     const hasAnyOffer = state.offer.length > 0 || state.aiOffer.length > 0;
 
-    els.btnAccept.disabled = busy || !canAcceptTrade();
-    els.btnDecline.disabled = busy || !hasAnyOffer;
-    els.btnCounter.disabled = busy || state.aiInventory.length === 0;
+    if (els.btnAccept) els.btnAccept.disabled = busy || !canAcceptTrade();
+    if (els.btnDecline) els.btnDecline.disabled = busy || !hasAnyOffer;
+    if (els.btnCounter) els.btnCounter.disabled = busy || state.aiInventory.length === 0;
     if (els.btnEndTrading) {
-      els.btnEndTrading.disabled = state.sessionEnded;
+      els.btnEndTrading.disabled = state.sessionEnded || state.selecting;
     }
   }
 
@@ -306,31 +654,6 @@
       els.valueFlash.hidden = true;
       flashTimeoutId = null;
     }, VALUE_FLASH_MS);
-  }
-
-  function playTradeDing() {
-    try {
-      const Ctx = window.AudioContext || window.webkitAudioContext;
-      if (!Ctx) return;
-      if (!audioCtx) audioCtx = new Ctx();
-      if (audioCtx.state === "suspended") audioCtx.resume();
-
-      const t0 = audioCtx.currentTime;
-      const osc = audioCtx.createOscillator();
-      const gain = audioCtx.createGain();
-      osc.type = "sine";
-      osc.frequency.setValueAtTime(740, t0);
-      osc.frequency.exponentialRampToValueAtTime(1180, t0 + 0.09);
-      gain.gain.setValueAtTime(0.0001, t0);
-      gain.gain.exponentialRampToValueAtTime(0.11, t0 + 0.02);
-      gain.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.28);
-      osc.connect(gain);
-      gain.connect(audioCtx.destination);
-      osc.start(t0);
-      osc.stop(t0 + 0.3);
-    } catch (_) {
-      /* silent if audio blocked */
-    }
   }
 
   /**
@@ -434,6 +757,9 @@
     if (state.justReceivedIds.has(item.instanceId) && !staticCard) {
       btn.classList.add("is-just-received");
     }
+    if (state.lastMovedId === item.instanceId && !staticCard && !prefersReducedMotion()) {
+      btn.classList.add("is-squishing");
+    }
     btn.dataset.instanceId = item.instanceId;
     btn.dataset.location = location;
     btn.disabled = staticCard || state.locked || state.sessionEnded;
@@ -448,7 +774,10 @@
     btn.innerHTML = `
       <div class="fidget-card__art">${renderBlobArt(item)}</div>
       <span class="fidget-card__name">${item.name}</span>
-      <span class="fidget-card__tier">${item.tier}</span>
+      <span class="fidget-card__tier">
+        <span class="fidget-card__tier-icon fidget-card__tier-icon--${item.tier}" aria-hidden="true"></span>
+        ${item.tier}
+      </span>
     `;
     if (!staticCard) {
       btn.addEventListener("click", () => onCardClick(item.instanceId, location));
@@ -463,6 +792,63 @@
     }
   }
 
+  /**
+   * Ownership invariant: every instanceId appears in exactly one of
+   * player inventory, player offer, AI inventory, AI offer.
+   */
+  function assertOwnership(context) {
+    const buckets = [
+      ["inventory", state.inventory],
+      ["offer", state.offer],
+      ["aiInventory", state.aiInventory],
+      ["aiOffer", state.aiOffer],
+    ];
+    const seen = new Map();
+    let ok = true;
+
+    for (const [name, list] of buckets) {
+      for (const item of list) {
+        const id = item && item.instanceId;
+        if (!id) {
+          ok = false;
+          console.warn("[fidget] missing instanceId in", name, context);
+          continue;
+        }
+        if (seen.has(id)) {
+          ok = false;
+          console.warn(
+            "[fidget] duplicate ownership",
+            id,
+            "in",
+            seen.get(id),
+            "and",
+            name,
+            context
+          );
+        } else {
+          seen.set(id, name);
+        }
+      }
+    }
+
+    return ok;
+  }
+
+  function clearSquishSoon() {
+    if (squishTimeoutId) {
+      clearTimeout(squishTimeoutId);
+      squishTimeoutId = null;
+    }
+    const delay = animMs(SQUISH_MS);
+    squishTimeoutId = setTimeout(() => {
+      state.lastMovedId = null;
+      squishTimeoutId = null;
+      document.querySelectorAll(".fidget-card.is-squishing").forEach((el) => {
+        el.classList.remove("is-squishing");
+      });
+    }, delay || 1);
+  }
+
   function renderAll() {
     renderList(els.inventory, state.inventory, "inventory");
     renderList(els.yourOffer, state.offer, "offer");
@@ -471,6 +857,8 @@
     updateHud();
     updateFairnessMeter();
     updateActionButtons();
+    assertOwnership("renderAll");
+    if (state.lastMovedId) clearSquishSoon();
   }
 
   function findOwned(instanceId) {
@@ -524,7 +912,7 @@
       evalDebounceId = null;
       if (gen !== evalGeneration || state.locked) return;
       runAiEvaluation(gen);
-    }, AI_EVAL_DEBOUNCE_MS);
+    }, animMs(AI_EVAL_DEBOUNCE_MS));
   }
 
   /**
@@ -659,11 +1047,13 @@
 
     // counter
     setAiStatus("AI is thinking...", "thinking");
+    playSfx("counter");
     thinkTimeoutId = setTimeout(() => {
       thinkTimeoutId = null;
       if (gen !== evalGeneration || state.locked) return;
 
       const changed = applyAiCounter();
+      assertOwnership("aiCounter");
       renderAll();
 
       if (changed) {
@@ -672,7 +1062,7 @@
         setAiStatus("AI wants more!", "decline");
         showAiSpeech("That's not a fair trade for me!");
       }
-    }, AI_THINK_PAUSE_MS);
+    }, animMs(AI_THINK_PAUSE_MS));
   }
 
   /**
@@ -681,6 +1071,11 @@
    */
   function placeAiOpeningOffer() {
     if (state.sessionEnded) return;
+
+    // Safety: never stack openings — stray offers return to owners first
+    if (state.offer.length || state.aiOffer.length) {
+      returnOffersToInventories();
+    }
 
     if (!state.aiInventory.length) {
       state.openingDone = true;
@@ -735,6 +1130,7 @@
     state.locked = false;
 
     setAiStatus("AI is waiting for your offer", "thinking");
+    assertOwnership("openingOffer");
     renderAll();
   }
 
@@ -782,10 +1178,76 @@
     state.aiOffer = [];
     state.justReceivedIds = new Set(receivedIds);
     state.tradesCompleted += 1;
+    assertOwnership("executeTradeSwap");
+  }
+
+  function finishAcceptedTrade() {
+    const valueBefore = playerOwnedValue();
+    const { delta } = calculateFairness(state.offer, state.aiOffer);
+
+    setAiStatus("Deal!", "happy");
+    playTradeDing();
+    els.table.classList.add("is-swapping");
+
+    const swapDelay = animMs(SWAP_ANIM_MS);
+    if (swapTimeoutId) clearTimeout(swapTimeoutId);
+    swapTimeoutId = setTimeout(() => {
+      swapTimeoutId = null;
+      els.table.classList.remove("is-swapping");
+      if (state.sessionEnded) return;
+
+      executeTradeSwap();
+
+      const valueAfter = playerOwnedValue();
+      flashInventoryValue(valueAfter, delta || valueAfter - valueBefore);
+
+      renderAll();
+      clearJustReceivedSoon();
+      scheduleOpeningOffer(animMs(POST_TRADE_OPENING_DELAY_MS));
+    }, swapDelay);
+  }
+
+  function handleAcceptCounter() {
+    playSfx("counter");
+    const changed = applyAiCounter();
+    assertOwnership("acceptCounter");
+    renderAll();
+
+    if (changed) {
+      setAiStatus("AI wants more!", "counter");
+      showAiSpeech("Not quite — here's my counter");
+    } else {
+      setAiStatus("AI wants more!", "decline");
+      showAiSpeech("Not quite — here's my counter");
+    }
+
+    state.locked = false;
+    state.lastDecision = "counter";
+    updateActionButtons();
+    // Do not auto re-evaluate here — player should read the counter and decide again
+  }
+
+  function handleAcceptDecline() {
+    playSfx("decline");
+    els.table.classList.add("is-returning");
+    setAiStatus("AI declined", "decline");
+    showAiSpeech("That's not fair enough for me!");
+
+    const returnDelay = animMs(RETURN_ANIM_MS);
+    if (returnTimeoutId) clearTimeout(returnTimeoutId);
+    returnTimeoutId = setTimeout(() => {
+      returnTimeoutId = null;
+      els.table.classList.remove("is-returning");
+      if (state.sessionEnded) return;
+
+      returnOffersToInventories();
+      renderAll();
+      scheduleOpeningOffer(animMs(POST_TRADE_OPENING_DELAY_MS));
+    }, returnDelay);
   }
 
   function onAccept() {
-    if (state.locked || !state.openingDone || state.sessionEnded) return;
+    if (state.locked || !state.openingDone || state.sessionEnded || state.selecting) return;
 
     if (!canAcceptTrade()) {
       showActionHint("Add at least one item to trade");
@@ -798,29 +1260,40 @@
     state.locked = true;
     updateActionButtons();
 
-    const valueBefore = playerOwnedValue();
-    const { delta } = calculateFairness(state.offer, state.aiOffer);
+    const gen = ++acceptGeneration;
+    setAiStatus("AI is deciding...", "thinking");
 
-    setAiStatus("Deal!", "happy");
-    playTradeDing();
-    els.table.classList.add("is-swapping");
+    if (acceptDecideTimeoutId) clearTimeout(acceptDecideTimeoutId);
+    acceptDecideTimeoutId = setTimeout(() => {
+      acceptDecideTimeoutId = null;
+      if (gen !== acceptGeneration || state.sessionEnded) return;
 
-    if (swapTimeoutId) clearTimeout(swapTimeoutId);
-    swapTimeoutId = setTimeout(() => {
-      swapTimeoutId = null;
-      els.table.classList.remove("is-swapping");
-      if (state.sessionEnded) return;
+      // Snapshot offers at decision time — must respect evaluation, never auto-swap
+      const playerOffer = state.offer.slice();
+      const aiOffer = state.aiOffer.slice();
+      if (!playerOffer.length || !aiOffer.length) {
+        state.locked = false;
+        updateActionButtons();
+        showActionHint("Add at least one item to trade");
+        return;
+      }
 
-      executeTradeSwap();
+      const decision = aiEvaluateTrade(playerOffer, aiOffer);
+      state.lastDecision = decision;
 
-      const valueAfter = playerOwnedValue();
-      // delta from fairness: positive = player gained diamonds from the swap
-      flashInventoryValue(valueAfter, delta || valueAfter - valueBefore);
+      if (decision === "accept") {
+        finishAcceptedTrade();
+        return;
+      }
 
-      renderAll();
-      clearJustReceivedSoon();
-      scheduleOpeningOffer(POST_TRADE_OPENING_DELAY_MS);
-    }, SWAP_ANIM_MS);
+      if (decision === "counter") {
+        handleAcceptCounter();
+        return;
+      }
+
+      // decline
+      handleAcceptDecline();
+    }, animMs(AI_ACCEPT_DECIDE_MS));
   }
 
   function returnOffersToInventories() {
@@ -828,10 +1301,11 @@
     state.aiInventory = state.aiInventory.concat(state.aiOffer);
     state.offer = [];
     state.aiOffer = [];
+    assertOwnership("returnOffers");
   }
 
   function onDecline() {
-    if (state.locked || !state.openingDone || state.sessionEnded) return;
+    if (state.locked || !state.openingDone || state.sessionEnded || state.selecting) return;
     if (state.offer.length === 0 && state.aiOffer.length === 0) return;
 
     clearPendingAiTimers();
@@ -840,10 +1314,12 @@
     state.locked = true;
     updateActionButtons();
 
+    playSfx("decline");
     els.table.classList.add("is-returning");
     setAiStatus("Trade declined", "decline");
     showActionHint("Trade declined");
 
+    const returnDelay = animMs(RETURN_ANIM_MS);
     if (returnTimeoutId) clearTimeout(returnTimeoutId);
     returnTimeoutId = setTimeout(() => {
       returnTimeoutId = null;
@@ -852,26 +1328,29 @@
 
       returnOffersToInventories();
       renderAll();
-      scheduleOpeningOffer(POST_TRADE_OPENING_DELAY_MS);
-    }, RETURN_ANIM_MS);
+      scheduleOpeningOffer(animMs(POST_TRADE_OPENING_DELAY_MS));
+    }, returnDelay);
   }
 
   function onCounter() {
-    if (state.locked || !state.openingDone || state.sessionEnded) return;
+    if (state.locked || !state.openingDone || state.sessionEnded || state.selecting) return;
 
     clearPendingAiTimers();
     hideAiSpeech();
 
     const added = tryAiAddMore();
     if (added) {
+      playSfx("counter");
       setAiStatus("AI sweetened the offer", "counter");
       showAiSpeech("Fine — I'll add a little more.");
+      assertOwnership("playerCounter");
       renderAll();
       // Re-evaluate if player already has items on the table
       if (state.offer.length > 0) {
         scheduleAiEvaluation();
       }
     } else {
+      playSfx("decline");
       setAiStatus("AI won't budge", "decline");
       showAiSpeech("I won't add anything else!");
       updateActionButtons();
@@ -891,9 +1370,14 @@
     } else if (found.list === "offer") {
       const [item] = state.offer.splice(found.index, 1);
       state.inventory.push(item);
+    } else {
+      return;
     }
 
+    state.lastMovedId = instanceId;
+    playSfx("place");
     hideAiSpeech();
+    assertOwnership("cardMove");
     renderAll();
     scheduleAiEvaluation();
   }
@@ -939,6 +1423,15 @@
       clearTimeout(returnTimeoutId);
       returnTimeoutId = null;
     }
+    if (squishTimeoutId) {
+      clearTimeout(squishTimeoutId);
+      squishTimeoutId = null;
+    }
+    if (acceptDecideTimeoutId) {
+      clearTimeout(acceptDecideTimeoutId);
+      acceptDecideTimeoutId = null;
+    }
+    acceptGeneration += 1;
   }
 
   function sortByTier(items) {
@@ -1092,16 +1585,58 @@
   }
 
   function onEndTrading() {
-    if (state.sessionEnded) return;
+    if (state.sessionEnded || state.selecting) return;
     endSession();
   }
 
+  function startTradingFromSelection() {
+    if (!state.selecting) return;
+    const picked = buildInventoryFromSelection();
+    if (!picked.length) {
+      if (els.selectTip) {
+        els.selectTip.textContent = "Pick at least one squishy to start trading.";
+        els.selectTip.hidden = false;
+      }
+      return;
+    }
+
+    hideSelectScreen();
+
+    state.inventory = picked;
+    state.offer = [];
+    state.aiInventory = window.generateAIInventory();
+    state.aiOffer = [];
+    state.lastDecision = null;
+    state.openingDone = false;
+    state.tradesCompleted = 0;
+    state.locked = true;
+    state.sessionEnded = false;
+    state.startingValue = inventoryValue(state.inventory);
+    state.justReceivedIds = new Set();
+    state.lastMovedId = null;
+
+    setAiStatus("AI is preparing an offer…", "thinking");
+    assertOwnership("startTrading");
+    renderAll();
+    startTimer();
+
+    openingTimeoutId = setTimeout(() => {
+      openingTimeoutId = null;
+      if (state.sessionEnded) return;
+      placeAiOpeningOffer();
+    }, animMs(AI_OPENING_DELAY_MS));
+  }
+
+  /**
+   * Full reset: return to inventory selection; AI re-rolls after Start Trading.
+   */
   function newGame() {
     clearPendingAiTimers();
     clearOpeningTimer();
     clearAnimTimers();
     hideAiSpeech();
     hideEndOverlay();
+    stopTimer();
     if (hintTimeoutId) {
       clearTimeout(hintTimeoutId);
       hintTimeoutId = null;
@@ -1115,41 +1650,47 @@
       glowTimeoutId = null;
     }
 
-    els.table.classList.remove("is-swapping", "is-returning");
-    els.valueFlash.hidden = true;
-    els.actionHint.hidden = true;
+    if (els.table) {
+      els.table.classList.remove("is-swapping", "is-returning");
+    }
+    if (els.valueFlash) els.valueFlash.hidden = true;
+    if (els.actionHint) els.actionHint.hidden = true;
 
-    state.inventory = window.generateStartingInventory();
+    state.inventory = [];
     state.offer = [];
-    state.aiInventory = window.generateAIInventory();
+    state.aiInventory = [];
     state.aiOffer = [];
     state.lastDecision = null;
     state.openingDone = false;
     state.tradesCompleted = 0;
-    state.locked = false;
+    state.locked = true;
     state.sessionEnded = false;
-    state.startingValue = inventoryValue(state.inventory);
+    state.startingValue = STARTING_BUDGET;
     state.justReceivedIds = new Set();
+    state.lastMovedId = null;
+    state.secondsLeft = TIMER_START_SEC;
 
-    setAiStatus("AI is preparing an offer…", "thinking");
-    renderAll();
-    startTimer();
-
-    openingTimeoutId = setTimeout(() => {
-      openingTimeoutId = null;
-      if (state.sessionEnded) return;
-      placeAiOpeningOffer();
-    }, AI_OPENING_DELAY_MS);
+    setAiStatus("", null);
+    showSelectScreen();
   }
+
+  state.muted = loadMutePref();
+  syncMuteUi();
 
   els.btnAccept.addEventListener("click", onAccept);
   els.btnDecline.addEventListener("click", onDecline);
   els.btnCounter.addEventListener("click", onCounter);
+  if (els.btnMute) {
+    els.btnMute.addEventListener("click", toggleMute);
+  }
   if (els.btnEndTrading) {
     els.btnEndTrading.addEventListener("click", onEndTrading);
   }
   if (els.btnTradeAgain) {
     els.btnTradeAgain.addEventListener("click", () => newGame());
+  }
+  if (els.btnStartTrading) {
+    els.btnStartTrading.addEventListener("click", startTradingFromSelection);
   }
 
   // Expose for debugging / verification
@@ -1158,6 +1699,9 @@
   window.endSession = endSession;
   window.returnOffersToInventories = returnOffersToInventories;
   window.__fidgetState = state;
+  window.__fidgetAssertOwnership = assertOwnership;
+  window.__fidgetStartTrading = startTradingFromSelection;
+  window.__fidgetShowSelect = showSelectScreen;
 
   newGame();
 })();

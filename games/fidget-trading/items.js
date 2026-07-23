@@ -244,6 +244,8 @@ function pickRandomFrom(list) {
 
 /**
  * Spend ALL of a 20-diamond budget (or as close without going over).
+ * Biased toward normals so inventories typically land ~7–10 items
+ * (hard max is 10 at 2♦ each under a 20♦ budget; soft target 7–15 for QA).
  * Weighted picks; stop when remaining diamonds can't afford any item.
  * Returns item instances (def copies — duplicates allowed).
  */
@@ -251,9 +253,25 @@ function generateInventoryFromBudget(budget = 20) {
   const inventory = [];
   let remaining = budget;
   const minCost = FIDGET_TIER_COST.normal;
+  const targetMin = 7;
 
   while (remaining >= minCost) {
-    const tier = pickAffordableTier(remaining);
+    const itemsLeftRoom = Math.floor(remaining / minCost);
+    const needMoreItems = inventory.length < targetMin && itemsLeftRoom > 1;
+
+    let tier;
+    if (needMoreItems) {
+      // Reserve enough normals to approach targetMin when possible
+      const reserve = Math.max(0, targetMin - inventory.length - 1) * minCost;
+      const spendCap = remaining - reserve;
+      if (spendCap < FIDGET_TIER_COST.glitter || Math.random() < 0.82) {
+        tier = "normal";
+      } else {
+        tier = pickAffordableTier(Math.min(remaining, spendCap));
+      }
+    } else {
+      tier = pickAffordableTier(remaining);
+    }
     if (!tier) break;
 
     const pool = FIDGET_BY_TIER[tier];

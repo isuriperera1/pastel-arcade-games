@@ -1,4 +1,4 @@
-/* Fidget Trading — Parts 1–4 (board, AI, actions, timer & end-of-session) */
+/* Fidget Trading — polished board, SFX-ready UI, a11y & motion */
 
 :root {
   --ft-gold: #d4b56a;
@@ -11,6 +11,7 @@
   --ft-fair-ai: #e8b4b8;
   --ft-fair-equal: #b9a9d6;
   --ft-timer-urgent: color-mix(in srgb, var(--pink) 72%, #c45c66);
+  --ft-tap-min: 44px;
 }
 
 .fidget-shell {
@@ -18,13 +19,269 @@
   margin: 0 auto;
 }
 
+/* -------------------------------------------------------------------------- */
+/* Starting inventory selection                                               */
+/* -------------------------------------------------------------------------- */
+
+.fidget-select {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  min-height: min(70vh, 36rem);
+  padding: var(--space-4);
+  border-radius: var(--radius-lg);
+  background:
+    linear-gradient(165deg, rgba(127, 199, 196, 0.22), transparent 42%),
+    linear-gradient(0deg, rgba(185, 169, 214, 0.2), transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--cream) 92%, white), var(--surface));
+  box-shadow: var(--shadow-soft);
+}
+
+.fidget-select[hidden],
+.fidget-trade-ui[hidden] {
+  display: none;
+}
+
+.fidget-select__header {
+  text-align: center;
+}
+
+.fidget-select__title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--font-display);
+  font-size: clamp(1.35rem, 4vw, 1.75rem);
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  color: var(--ink);
+}
+
+.fidget-select__budget {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.2rem;
+  margin: 0;
+}
+
+.fidget-select__budget-label {
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
+.fidget-select__budget-value {
+  font-family: var(--font-display);
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: color-mix(in srgb, var(--teal) 55%, var(--ink));
+}
+
+.fidget-select__scroll {
+  flex: 1;
+  max-height: min(48vh, 22rem);
+  overflow-y: auto;
+  padding: var(--space-2);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--cream) 78%, white);
+  box-shadow: var(--shadow-inset);
+  scroll-behavior: smooth;
+}
+
+.fidget-select__tier {
+  margin-bottom: var(--space-4);
+}
+
+.fidget-select__tier:last-child {
+  margin-bottom: 0;
+}
+
+.fidget-select__tier-heading {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  margin: 0 0 var(--space-2);
+  padding: 0.45rem 0.65rem;
+  font-family: var(--font-display);
+  font-size: 0.88rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--ink);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 88%, var(--lavender-soft));
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--lavender) 25%, transparent);
+}
+
+.fidget-select__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(5.5rem, 1fr));
+  gap: var(--space-2);
+}
+
+.fidget-select-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.3rem;
+  width: 100%;
+  min-height: var(--ft-tap-min);
+  padding: var(--space-2) var(--space-2) var(--space-3);
+  border: 2px solid color-mix(in srgb, var(--lavender) 35%, transparent);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-soft);
+  cursor: pointer;
+  font: inherit;
+  color: var(--ink);
+  transition:
+    transform var(--transition-fast),
+    box-shadow var(--transition-fast),
+    border-color var(--transition-fast),
+    background var(--transition-fast),
+    opacity var(--transition-fast);
+}
+
+.fidget-select-card:hover:not(:disabled):not(.is-selected) {
+  box-shadow: var(--shadow-lift);
+  transform: translateY(-2px);
+}
+
+.fidget-select-card:focus-visible {
+  outline: 2px solid var(--teal);
+  outline-offset: 3px;
+}
+
+.fidget-select-card.is-selected {
+  border-color: color-mix(in srgb, var(--teal) 65%, var(--lavender));
+  background:
+    linear-gradient(160deg, rgba(127, 199, 196, 0.22), transparent 55%),
+    color-mix(in srgb, var(--surface) 92%, var(--pink-soft));
+  box-shadow:
+    var(--shadow-lift),
+    0 0 0 2px color-mix(in srgb, var(--teal) 35%, transparent);
+  transform: translateY(-3px);
+}
+
+.fidget-select-card.is-selected .fidget-select-card__check {
+  opacity: 1;
+  transform: scale(1);
+}
+
+.fidget-select-card:disabled,
+.fidget-select-card.is-unaffordable:not(.is-selected) {
+  cursor: not-allowed;
+  opacity: 0.48;
+  filter: grayscale(0.35);
+  box-shadow: none;
+}
+
+.fidget-select-card:disabled:hover,
+.fidget-select-card.is-unaffordable:not(.is-selected):hover {
+  transform: none;
+  box-shadow: none;
+}
+
+.fidget-select-card__check {
+  position: absolute;
+  top: 0.35rem;
+  right: 0.35rem;
+  display: grid;
+  place-items: center;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-radius: 50%;
+  font-size: 0.7rem;
+  font-weight: 700;
+  line-height: 1;
+  color: color-mix(in srgb, var(--teal) 40%, var(--ink));
+  background: color-mix(in srgb, var(--teal-soft) 75%, white);
+  border: 1.5px solid color-mix(in srgb, var(--teal) 50%, transparent);
+  opacity: 0;
+  transform: scale(0.7);
+  transition:
+    opacity var(--transition-fast),
+    transform var(--transition-fast);
+  pointer-events: none;
+}
+
+.fidget-select-card__art {
+  position: relative;
+  width: 3.25rem;
+  height: 3.25rem;
+  flex-shrink: 0;
+}
+
+.fidget-select-card__name {
+  font-family: var(--font-display);
+  font-size: 0.68rem;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: center;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.fidget-select-card__cost {
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--ink-muted);
+}
+
+.fidget-select__footer {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  text-align: center;
+}
+
+.fidget-select__summary {
+  margin: 0;
+  font-family: var(--font-display);
+  font-size: 0.92rem;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.fidget-select__tip {
+  margin: 0;
+  max-width: 22rem;
+  font-size: 0.82rem;
+  font-weight: 500;
+  line-height: 1.35;
+  color: color-mix(in srgb, var(--lavender) 55%, var(--ink));
+}
+
+.fidget-select__tip[hidden] {
+  display: none;
+}
+
+.fidget-select__start {
+  min-width: 12rem;
+  min-height: var(--ft-tap-min);
+}
+
+.fidget-select__start:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 3px;
+}
+
 .fidget-toolbar {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: var(--space-2);
   margin-bottom: var(--space-2);
 }
 
+.fidget-mute-btn,
 .fidget-end-btn {
+  min-height: var(--ft-tap-min);
   opacity: 0.72;
   font-weight: 500;
   letter-spacing: 0.01em;
@@ -32,9 +289,36 @@
   border-color: rgba(58, 49, 89, 0.1);
 }
 
+.fidget-mute-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+}
+
+.fidget-mute-btn__icon {
+  font-size: 0.95rem;
+  line-height: 1;
+}
+
+.fidget-mute-btn[aria-pressed="true"] {
+  opacity: 0.55;
+}
+
+.fidget-mute-btn[aria-pressed="true"] .fidget-mute-btn__icon {
+  text-decoration: line-through;
+}
+
+.fidget-mute-btn:hover:not(:disabled),
 .fidget-end-btn:hover:not(:disabled) {
   opacity: 1;
   color: var(--ink);
+}
+
+.fidget-mute-btn:focus-visible,
+.fidget-end-btn:focus-visible,
+.fidget-trade-again:focus-visible {
+  outline: 2px solid var(--lavender);
+  outline-offset: 3px;
 }
 
 .fidget-end-btn:disabled {
@@ -263,6 +547,17 @@
   padding: 0.15rem 0.25rem;
 }
 
+.fairness-meter__labels {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  font-size: 0.65rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--ink-muted);
+}
+
 .fairness-meter__track {
   position: relative;
   width: 100%;
@@ -359,7 +654,8 @@
   flex-direction: column;
   align-items: center;
   gap: 0.4rem;
-  width: 4.25rem;
+  min-width: var(--ft-tap-min);
+  width: 4.5rem;
   padding: 0;
   border: none;
   background: transparent;
@@ -372,8 +668,10 @@
 .trade-btn__icon {
   display: grid;
   place-items: center;
-  width: 3.6rem;
-  height: 3.6rem;
+  width: var(--ft-tap-min);
+  height: var(--ft-tap-min);
+  min-width: var(--ft-tap-min);
+  min-height: var(--ft-tap-min);
   border-radius: 50%;
   font-size: 1.55rem;
   font-weight: 700;
@@ -495,6 +793,7 @@
   align-items: center;
   gap: 0.35rem;
   width: 5.5rem;
+  min-height: var(--ft-tap-min);
   padding: var(--space-2) var(--space-2) var(--space-3);
   border: 2.5px solid var(--ft-tier-normal);
   border-radius: var(--radius-md);
@@ -503,36 +802,53 @@
   cursor: pointer;
   font: inherit;
   color: var(--ink);
+  transform-origin: 50% 70%;
   transition:
-    transform var(--transition-fast),
     box-shadow var(--transition-fast);
-  animation: fidget-pop 280ms cubic-bezier(0.34, 1.45, 0.64, 1) both;
+  animation:
+    fidget-pop 280ms cubic-bezier(0.34, 1.45, 0.64, 1) both,
+    fidget-breathe 4.2s ease-in-out 280ms infinite;
 }
 
 .fidget-card:hover {
-  transform: translateY(-2px) scale(1.03);
   box-shadow: var(--shadow-lift);
+}
+
+.fidget-card:hover .fidget-blob__face {
+  transform: translateY(-2px) scale(1.03);
 }
 
 .fidget-card:focus-visible {
   outline: 2px solid var(--teal);
-  outline-offset: 2px;
+  outline-offset: 3px;
+  box-shadow:
+    var(--shadow-lift),
+    0 0 0 2px color-mix(in srgb, var(--teal) 35%, transparent);
 }
 
 .fidget-card.is-just-received {
-  animation: fidget-received-glow 1s ease both;
+  animation:
+    fidget-received-glow 1s ease both,
+    fidget-breathe 4.2s ease-in-out 1s infinite;
   box-shadow:
     var(--shadow-lift),
     0 0 0 3px color-mix(in srgb, var(--teal) 55%, transparent),
     0 0 18px color-mix(in srgb, var(--teal-soft) 70%, transparent);
 }
 
+.fidget-card.is-squishing {
+  animation: fidget-squish 180ms cubic-bezier(0.34, 1.55, 0.64, 1) both;
+}
+
 .fidget-card--normal {
   border-color: var(--ft-tier-normal);
+  border-style: solid;
 }
 
 .fidget-card--glitter {
   border-color: var(--ft-tier-glitter);
+  border-style: double;
+  border-width: 3px;
   background:
     linear-gradient(145deg, rgba(232, 213, 163, 0.35), transparent 55%),
     var(--surface);
@@ -543,6 +859,8 @@
 
 .fidget-card--butter {
   border-color: var(--ft-tier-butter);
+  border-style: solid;
+  border-radius: 1.15rem 0.65rem 1.15rem 0.65rem;
   background:
     linear-gradient(160deg, rgba(245, 239, 227, 0.9), rgba(232, 213, 163, 0.45)),
     var(--surface);
@@ -575,6 +893,9 @@
 }
 
 .fidget-card__tier {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.28rem;
   font-size: 0.6rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -582,7 +903,35 @@
   color: var(--ink-muted);
 }
 
-/* Glitter: sparkle dots + shimmer sweep clipped to blob */
+.fidget-card__tier-icon {
+  display: inline-block;
+  flex-shrink: 0;
+  width: 0.55rem;
+  height: 0.55rem;
+  background: currentColor;
+}
+
+.fidget-card__tier-icon--normal {
+  border-radius: 50%;
+  background: var(--ft-tier-normal);
+}
+
+.fidget-card__tier-icon--glitter {
+  width: 0.58rem;
+  height: 0.58rem;
+  background: var(--ft-tier-glitter);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+}
+
+.fidget-card__tier-icon--butter {
+  width: 0.52rem;
+  height: 0.52rem;
+  border-radius: 0.12rem;
+  background: var(--ft-tier-butter);
+  transform: rotate(12deg);
+}
+
+/* Blob art: wobble + tier FX */
 .fidget-blob {
   position: absolute;
   inset: 0;
@@ -592,6 +941,9 @@
   position: absolute;
   inset: 0;
   z-index: 1;
+  transform-origin: 50% 70%;
+  animation: fidget-wobble 3.8s ease-in-out infinite;
+  transition: transform var(--transition-fast);
 }
 
 .fidget-blob__sparkle {
@@ -620,39 +972,41 @@
     rgba(255, 255, 255, 0.55) 48%,
     transparent 62%
   );
-  background-size: 200% 100%;
-  animation: fidget-shimmer 2.4s ease-in-out infinite;
+  background-size: 220% 100%;
+  /* Slow sweep every few seconds (pause between passes) */
+  animation: fidget-shimmer 5.5s ease-in-out infinite;
   -webkit-mask-image: radial-gradient(ellipse 68% 62% at 50% 54%, #000 58%, transparent 74%);
   mask-image: radial-gradient(ellipse 68% 62% at 50% 54%, #000 58%, transparent 74%);
 }
 
-/* Butter: glossy highlight + melt wobble */
 .fidget-blob--butter .fidget-blob__face {
-  animation: fidget-melt 3.6s ease-in-out infinite;
-  transform-origin: 50% 70%;
+  animation: fidget-wobble-melt 4.4s ease-in-out infinite;
 }
 
 .fidget-blob__gloss {
   position: absolute;
-  left: 22%;
-  top: 18%;
-  width: 38%;
-  height: 28%;
+  left: 18%;
+  top: 14%;
+  width: 42%;
+  height: 32%;
   z-index: 2;
   pointer-events: none;
   border-radius: 50%;
   background: linear-gradient(
     160deg,
-    rgba(255, 255, 255, 0.75),
-    rgba(255, 255, 255, 0.15) 55%,
+    rgba(255, 255, 255, 0.8),
+    rgba(255, 255, 255, 0.18) 55%,
     transparent
   );
   filter: blur(0.3px);
+  /* Distinct pacing from glitter shimmer */
+  animation: fidget-gloss-sweep 7.2s ease-in-out infinite;
 }
 
 /* Offer shelf cards a bit larger for shelf feel */
 .offer-shelf .fidget-card {
   width: 5.75rem;
+  min-height: calc(var(--ft-tap-min) + 0.5rem);
 }
 
 @keyframes fidget-pop {
@@ -666,25 +1020,94 @@
   }
 }
 
-@keyframes fidget-shimmer {
-  0% {
-    background-position: 120% 0;
-  }
+@keyframes fidget-breathe {
+  0%,
   100% {
-    background-position: -80% 0;
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.02);
   }
 }
 
-@keyframes fidget-melt {
+@keyframes fidget-wobble {
   0%,
   100% {
-    transform: scale(1, 1) translateY(0);
+    transform: rotate(0deg) translateX(0);
   }
-  40% {
-    transform: scale(1.04, 0.94) translateY(1px);
+  25% {
+    transform: rotate(-1.4deg) translateX(-0.5px);
+  }
+  75% {
+    transform: rotate(1.4deg) translateX(0.5px);
+  }
+}
+
+@keyframes fidget-wobble-melt {
+  0%,
+  100% {
+    transform: scale(1, 1) translateY(0) rotate(0deg);
+  }
+  35% {
+    transform: scale(1.03, 0.96) translateY(1px) rotate(-1deg);
   }
   70% {
-    transform: scale(0.97, 1.04) translateY(-1px);
+    transform: scale(0.98, 1.03) translateY(-1px) rotate(1deg);
+  }
+}
+
+@keyframes fidget-squish {
+  0% {
+    transform: scale(1, 1);
+  }
+  35% {
+    transform: scale(1.08, 0.82);
+  }
+  70% {
+    transform: scale(0.96, 1.06);
+  }
+  100% {
+    transform: scale(1, 1);
+  }
+}
+
+@keyframes fidget-shimmer {
+  0%,
+  55% {
+    background-position: 130% 0;
+    opacity: 0;
+  }
+  60% {
+    opacity: 1;
+  }
+  78% {
+    background-position: -90% 0;
+    opacity: 0.9;
+  }
+  85%,
+  100% {
+    background-position: -90% 0;
+    opacity: 0;
+  }
+}
+
+@keyframes fidget-gloss-sweep {
+  0%,
+  40% {
+    transform: translate(-4%, -2%) scale(1);
+    opacity: 0.35;
+  }
+  55% {
+    transform: translate(18%, 8%) scale(1.08);
+    opacity: 0.85;
+  }
+  72% {
+    transform: translate(40%, 22%) scale(0.92);
+    opacity: 0.2;
+  }
+  100% {
+    transform: translate(-4%, -2%) scale(1);
+    opacity: 0.35;
   }
 }
 
@@ -985,6 +1408,21 @@
     animation: none;
   }
 
+  .fidget-select__scroll {
+    scroll-behavior: auto;
+  }
+
+  .fidget-select-card,
+  .fidget-select-card.is-selected,
+  .fidget-select-card__check {
+    transition: none;
+  }
+
+  .fidget-select-card:hover:not(:disabled):not(.is-selected),
+  .fidget-select-card.is-selected {
+    transform: none;
+  }
+
   .fidget-end-modal {
     animation: fidget-modal-fade 280ms ease both;
   }
@@ -999,17 +1437,40 @@
     opacity: 0.75;
   }
 
+  .fidget-blob__face,
+  .fidget-blob--butter .fidget-blob__face,
   .fidget-blob__shimmer,
-  .fidget-blob--butter .fidget-blob__face {
-    animation: none;
+  .fidget-blob__gloss {
+    animation: none !important;
   }
 
   .value-flash,
   .ai-speech,
   .fidget-card,
   .fidget-card.is-just-received,
+  .fidget-card.is-squishing,
   .fidget-table.is-returning .offer-shelf .fidget-card {
-    animation: none;
+    animation: none !important;
+  }
+
+  .fidget-table.is-swapping .offer-zone--ai .offer-shelf,
+  .fidget-table.is-swapping .offer-zone:not(.offer-zone--ai) .offer-shelf {
+    transform: none;
+    opacity: 1;
+    transition: none;
+  }
+
+  .offer-shelf {
+    transition: none;
+  }
+
+  .fairness-meter__marker,
+  .fairness-meter__fill {
+    transition: none;
+  }
+
+  .fidget-card:hover .fidget-blob__face {
+    transform: none;
   }
 }
 
@@ -1022,9 +1483,40 @@
   }
 }
 
+/* Mobile: stack table zones, 44px taps, compact end modal */
 @media (max-width: 520px) {
+  .fidget-shell {
+    max-width: 100%;
+  }
+
+  .fidget-toolbar {
+    flex-wrap: wrap;
+    justify-content: space-between;
+  }
+
+  .fidget-mute-btn {
+    position: relative;
+    min-width: var(--ft-tap-min);
+    justify-content: center;
+  }
+
+  .fidget-mute-btn__label {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
+  }
+
   .fidget-table {
-    padding: var(--space-4);
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-3);
+    padding: var(--space-3);
   }
 
   .offer-zone__empty {
@@ -1035,16 +1527,35 @@
 
   .inventory-tray {
     max-height: 12rem;
+    grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr));
+  }
+
+  .fidget-card,
+  .offer-shelf .fidget-card {
+    width: 100%;
+    max-width: 5.75rem;
+    min-height: var(--ft-tap-min);
   }
 
   .trade-actions {
     gap: var(--space-3);
+    flex-wrap: wrap;
+  }
+
+  .trade-btn {
+    width: auto;
+    min-width: 4.75rem;
   }
 
   .trade-btn__icon {
-    width: 3.25rem;
-    height: 3.25rem;
+    width: var(--ft-tap-min);
+    height: var(--ft-tap-min);
     font-size: 1.4rem;
+  }
+
+  .fidget-end-overlay {
+    padding: var(--space-3);
+    align-items: flex-start;
   }
 
   .fidget-end-stats {
@@ -1052,6 +1563,31 @@
   }
 
   .fidget-end-modal {
+    width: 100%;
+    max-height: min(94vh, 44rem);
     padding: var(--space-4) var(--space-3);
+    margin: var(--space-3) 0;
+  }
+
+  .fidget-trade-again {
+    min-height: var(--ft-tap-min);
+  }
+
+  .fidget-select {
+    min-height: auto;
+    padding: var(--space-3);
+  }
+
+  .fidget-select__scroll {
+    max-height: min(52vh, 20rem);
+  }
+
+  .fidget-select__grid {
+    grid-template-columns: repeat(auto-fill, minmax(4.75rem, 1fr));
+  }
+
+  .fidget-select__start {
+    width: 100%;
+    max-width: 16rem;
   }
 }
